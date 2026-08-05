@@ -88,11 +88,17 @@ export default tseslint.config(
   },
 
   {
-    files: ['**/*.test.{ts,tsx}', '**/test/**/*.{ts,tsx}'],
+    files: ['**/*.test.{ts,tsx}', '**/test/**/*.{ts,tsx}', 'e2e/**/*.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
     },
+  },
+
+  // Build scripts talk to the operator through stdout; that is their interface.
+  {
+    files: ['scripts/**/*.mjs'],
+    rules: { 'no-console': 'off' },
   },
 
   prettier,

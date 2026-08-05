@@ -1,0 +1,14 @@
+{
+  // Root-level test tooling. The three workspaces have their own configs; this
+  // one exists so the Playwright config and the e2e specs — which belong to no
+  // workspace, because they exercise both — are still type-checked and linted.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node"]
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}
