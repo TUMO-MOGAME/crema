@@ -82,8 +82,8 @@ Requires **Node 24** and npm 11. If you use `nvm`, `nvm use` reads the pinned
 version from `.nvmrc`.
 
 ```bash
-git clone https://github.com/Umuzi-classroom/full-stack-developer-bootcamp-TUMO-MOGAME.git
-cd full-stack-developer-bootcamp-TUMO-MOGAME
+git clone https://github.com/TUMO-MOGAME/crema.git
+cd crema
 
 npm install
 cp .env.example .env      # the defaults work as-is; no database or API key needed
@@ -144,10 +144,16 @@ treated as public by definition.
 
 ## Quality gates
 
-`main` is protected. Every change arrives by pull request and must pass:
+Nine CI stages run on every push and pull request. Eight in parallel, plus an
+aggregate check that branch protection points at:
 
-lint · typecheck · unit tests · API contract tests · SQL migration lint ·
-`npm audit` · `gitleaks` · production build · Playwright end-to-end journey
+lint and format · typecheck · unit tests · API tests · migration lint · security
+· build · end-to-end · **CI**
+
+Coverage thresholds are enforced at 80% lines and 75% branches. `gitleaks` scans
+the **full git history** rather than the diff, so a secret committed and later
+deleted still fails the build. The bundle has a gzip size budget. Details in
+[Documentation.md](./Documentation.md#10-the-pipeline).
 
 ## Meeting the brief
 

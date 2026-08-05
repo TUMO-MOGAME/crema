@@ -40,8 +40,8 @@ nothing to provision.
 ## 3. Setup
 
 ```bash
-git clone https://github.com/Umuzi-classroom/full-stack-developer-bootcamp-TUMO-MOGAME.git
-cd full-stack-developer-bootcamp-TUMO-MOGAME
+git clone https://github.com/TUMO-MOGAME/crema.git
+cd crema
 
 nvm use          # optional; reads Node 24 from .nvmrc
 npm install      # installs all three workspaces
@@ -219,7 +219,63 @@ chore(repo): pin node to 24 lts
 Allowed scopes: `repo`, `ci`, `api`, `web`, `shared`, `db`, `ai`, `docs`,
 `deps`, `test`.
 
-## 10. Troubleshooting
+### Two remotes
+
+The project lives in two places, with the same history in both.
+
+| Remote      | Repository                                                  | Role                                       |
+| ----------- | ----------------------------------------------------------- | ------------------------------------------ |
+| `origin`    | `Umuzi-classroom/full-stack-developer-bootcamp-TUMO-MOGAME` | Assessment submission. Private.            |
+| `portfolio` | `TUMO-MOGAME/crema`                                         | Public. Protected `main`, required checks. |
+
+`main` cannot be protected on the classroom repository because it is owned by
+the `Umuzi-classroom` organisation and this account has push access but not
+admin. The public mirror is where the branch protection and the enforced PR
+workflow actually live.
+
+```bash
+git pushall   # configured alias: pushes main to both remotes
+```
+
+## 10. The pipeline
+
+`.github/workflows/ci.yml` runs on every push and pull request. Eight stages run
+in parallel; a ninth aggregates them.
+
+| Stage           | What fails it                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------- |
+| Lint and format | Any ESLint error or Prettier drift                                                                            |
+| Typecheck       | Any type error in any workspace, plus the root e2e project                                                    |
+| Unit tests      | Contract or web test failure, or web coverage under threshold                                                 |
+| API tests       | Route, middleware or env failure, or coverage under threshold                                                 |
+| Migration lint  | Bad filename, duplicate or skipped sequence number, unterminated statement, uncommented destructive statement |
+| Security        | A high-severity advisory, or any secret found anywhere in git history                                         |
+| Build           | Build failure, or the gzip bundle exceeding its budget                                                        |
+| End-to-end      | Any Playwright journey failing against production builds                                                      |
+| **CI**          | Any of the above. This is the single required status check.                                                   |
+
+Coverage thresholds are 80% lines and 75% branches, enforced per workspace.
+
+The secret scan uses the `gitleaks` binary rather than the marketplace action,
+because that action requires a paid licence for organisation-owned repositories.
+It scans **full history**, not the diff — a secret committed and later removed
+is still a leaked secret.
+
+Dependency installation is a composite action at `.github/actions/setup` rather
+than a job of its own, because passing `node_modules` between jobs as an
+artifact costs more than restoring the npm cache in each one.
+
+Run everything the pipeline runs, locally:
+
+```bash
+npm run verify          # format, lint, typecheck, unit and API tests
+npm run test:coverage   # the same tests with thresholds enforced
+npm run lint:migrations
+npm run build && npm run check:bundle
+npm run test:e2e
+```
+
+## 11. Troubleshooting
 
 **`npm install` fails on the Node version.** `engines` requires Node 24. Check
 with `node --version`, then `nvm use`.
