@@ -1,0 +1,512 @@
+# Planning
+
+**Project:** Crema — a brew log for people who take coffee seriously **Author:**
+Tumo Mogame **Assessment:** XPL Full-stack Developer Bootcamp **Last updated:**
+2026-08-05
+
+This document is the plan of record. It explains what is being built, why each
+technical decision was made, and in what order the work happens. Live progress
+is tracked separately in [STATUS.md](./STATUS.md).
+
+---
+
+## 1. Scope
+
+### 1.1 What the assessment requires
+
+The brief (preserved in [docs/assessment-brief.md](./docs/assessment-brief.md))
+asks for a Coffee Brew Log app with full CRUD, list filtering by brew method, a
+JSON API at `/api/brews`, an ORM over a SQL database, server- and client-side
+validation, correct HTTP status codes, responsive UI matching the supplied
+wireframes, a page title of `Brews: {brewCount}`, tidy git history, no hardcoded
+secrets, and a deployed URL.
+
+Every one of those is a hard requirement and is tracked as an acceptance
+criterion in section 9.
+
+### 1.2 What takes it beyond the brief
+
+The brief describes a to-do list with coffee vocabulary. Anyone can ship that.
+The goal here is a small system that reads like production software, so the work
+goes further in four specific directions:
+
+1. **A real AI feature, not a chatbot bolted on.** A brew coach agent that has
+   tool access to the user's own brew history, plus natural-language brew
+   capture. Both are described in section 6.
+2. **Database-ready, database-independent.** The full Postgres schema ships as
+   reviewed Supabase migrations from day one, while the running app is backed by
+   an in-memory repository behind an interface. Connecting Supabase later is a
+   one-line change, not a rewrite. Section 5.
+3. **A pipeline that actually gates merges.** Protected `main`, eight CI stages,
+   secret scanning, coverage thresholds. Section 7.
+4. **Documentation a reviewer can follow without asking a question.** README,
+   Documentation.md, deployment.md, this file, and STATUS.md.
+
+### 1.3 Explicitly out of scope for v1
+
+- Real authentication flows. The schema is auth-ready (`profiles`, `user_id`
+  columns, RLS policies) but v1 runs as a single implicit user. Building a half
+  auth system is worse than building none.
+- Image upload for bean bags.
+- Multi-user sharing or social features.
+- Mobile app.
+
+These are listed in the README as "what I would build next", which is a stronger
+signal than pretending they were never considered.
+
+---
+
+## 2. Product name and positioning
+
+**Crema.** The layer of foam on a good espresso shot, and a word that signals
+the app is by someone who actually cares about coffee.
+
+One-line pitch used in the README and on the landing state:
+
+> Log every brew, spot what actually made it good, and let a coach that has read
+> your whole log tell you what to change next time.
+
+Naming the app costs nothing and immediately separates it from
+`coffee-brew-log-assessment`.
+
+---
+
+## 3. Technology decisions
+
+Every choice below is recorded with the reason, because "why" is what gets asked
+in an interview.
+
+| Layer        | Choice                                                      | Why this and not the obvious alternative                                                                                                                                                                                                                              |
+| ------------ | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language     | TypeScript 5.x, strict                                      | Non-negotiable. `strict: true`, `noUncheckedIndexedAccess: true`.                                                                                                                                                                                                     |
+| Runtime      | Node 24 LTS                                                 | Pinned in `.nvmrc` and `engines`, so CI and local match.                                                                                                                                                                                                              |
+| Repo layout  | npm workspaces monorepo                                     | The brief requires separate `frontend/` and `backend/` folders. Workspaces give that separation plus a shared package, with no extra build tooling to explain. Turborepo would be over-engineering at three packages.                                                 |
+| Frontend     | React 19 + Vite 7                                           | The brief wants a clear frontend/backend split. Vite keeps the frontend a genuine SPA talking to a genuine API over HTTP, which proves API design in a way a Next.js app calling its own server actions does not. Also: sub-second HMR, trivial Vercel static deploy. |
+| Styling      | Tailwind CSS v4 + shadcn/ui                                 | Satisfies the "any CSS framework" requirement. shadcn components are copied into the repo, not imported from a black box, so the accessibility work (focus traps, ARIA) is visible and reviewable.                                                                    |
+| Routing      | React Router 7                                              | List and modal routes, deep-linkable `/brews/:id/edit`.                                                                                                                                                                                                               |
+| Server state | TanStack Query v5                                           | Caching, optimistic updates, retry, and request de-duplication for free. Hand-rolled `useEffect` fetching is the single clearest junior tell.                                                                                                                         |
+| Forms        | React Hook Form + Zod resolver                              | The same Zod schema validates the form and the API body. One source of truth.                                                                                                                                                                                         |
+| Backend      | Hono 4                                                      | Web-standard `Request`/`Response`, first-class TypeScript, runs unchanged on Node locally and on Vercel Functions in production, and its test client needs no HTTP server. Express is the conservative pick and is a supported fallback — see section 11.             |
+| Validation   | Zod 4                                                       | Shared between frontend, backend, and the AI structured-output layer.                                                                                                                                                                                                 |
+| ORM          | Drizzle ORM                                                 | TypeScript-first, and `drizzle-kit generate` emits plain reviewable SQL that doubles as the Supabase migration files. Prisma's generated client and separate schema language add a build step and a second dialect for no benefit here.                               |
+| Database     | Supabase Postgres                                           | Migrations written now, connection deferred. Section 5.                                                                                                                                                                                                               |
+| AI           | Vercel AI SDK v6 + `@ai-sdk/google`                         | Provider-agnostic interface over Gemini, with first-class tool calling, streaming, and Zod-typed structured output. Swapping providers later is a one-line change.                                                                                                    |
+| Model        | Gemini Flash (free tier), pinned via `GEMINI_MODEL` env var | Fast and free-tier eligible. The exact model id lives in env, never hardcoded, so it can be bumped without a code change.                                                                                                                                             |
+| Testing      | Vitest, React Testing Library, MSW, Playwright              | Unit, integration, and one real end-to-end journey.                                                                                                                                                                                                                   |
+| CI/CD        | GitHub Actions                                              | Section 7.                                                                                                                                                                                                                                                            |
+| Hosting      | Vercel (two projects, one repo)                             | Section 8.                                                                                                                                                                                                                                                            |
+
+---
+
+## 4. Architecture
+
+### 4.1 Repository layout
+
+```
+.
+├── frontend/                    React 19 + Vite SPA
+│   ├── src/
+│   │   ├── app/                 App shell, providers, router
+│   │   ├── features/
+│   │   │   ├── brews/           List, filters, form, card, delete flow
+│   │   │   └── coach/           AI coach panel and quick-log
+│   │   ├── components/ui/       shadcn primitives
+│   │   ├── lib/                 api client, query keys, formatters
+│   │   └── test/                setup, MSW handlers
+│   └── e2e/                     Playwright specs
+│
+├── backend/                     Hono JSON API
+│   ├── src/
+│   │   ├── app.ts               Route composition (no listener — testable)
+│   │   ├── server.ts            Node entrypoint for local dev
+│   │   ├── config/env.ts        Zod-validated environment, fails fast
+│   │   ├── routes/              brews.ts, coach.ts, health.ts
+│   │   ├── services/            Business logic, framework-agnostic
+│   │   ├── repositories/        BrewRepository interface + adapters
+│   │   ├── db/                  Drizzle schema, client factory
+│   │   ├── ai/                  Agent, tools, prompts, guardrails
+│   │   └── middleware/          error handler, request id, rate limit, CORS
+│   └── api/index.ts             Vercel Functions entrypoint
+│
+├── shared/                      Zod schemas + inferred types, used by both
+│
+├── supabase/
+│   ├── migrations/              Ordered, reviewed SQL — the schema of record
+│   └── seed.sql                 Reference data + demo rows
+│
+├── .github/
+│   ├── workflows/ci.yml
+│   ├── pull_request_template.md
+│   └── CODEOWNERS
+│
+├── docs/
+│   ├── assessment-brief.md      Original brief, preserved verbatim
+│   ├── architecture.md          Diagrams and request lifecycle
+│   └── adr/                     Architecture decision records
+│
+├── README.md                    Front door
+├── Documentation.md             Setup and project description (required)
+├── deployment.md                Live URLs and deploy notes (required)
+├── PLANNING.md                  This file
+└── STATUS.md                    Live progress
+```
+
+### 4.2 Layering rule
+
+```
+route handler  →  service  →  repository  →  (adapter: memory | drizzle)
+```
+
+Handlers do HTTP only: parse, validate, map result to status code. Services hold
+business rules and know nothing about Hono. Repositories hold persistence and
+know nothing about business rules. Dependencies point inward, always.
+
+This is what makes section 5 possible, and it is the single thing that most
+clearly separates a bootcamp project from a professional one.
+
+### 4.3 Contract sharing
+
+`shared/` exports one Zod schema per concept. The backend parses request bodies
+with it. The frontend drives React Hook Form with it and infers its TypeScript
+types from it. If the contract changes, both sides fail to compile in the same
+commit. There is no drift, and no hand-written duplicate types.
+
+### 4.4 API surface
+
+| Method   | Path                    | Success            | Errors                           |
+| -------- | ----------------------- | ------------------ | -------------------------------- |
+| `GET`    | `/api/brews`            | `200`              | `400` bad filter                 |
+| `GET`    | `/api/brews?method=v60` | `200`              | `400` unknown method             |
+| `GET`    | `/api/brews/:id`        | `200`              | `404`                            |
+| `POST`   | `/api/brews`            | `201` + `Location` | `400` validation, `422` semantic |
+| `PATCH`  | `/api/brews/:id`        | `200`              | `400`, `404`                     |
+| `DELETE` | `/api/brews/:id`        | `204`              | `404`                            |
+| `GET`    | `/api/brew-methods`     | `200`              | —                                |
+| `GET`    | `/api/stats`            | `200`              | —                                |
+| `POST`   | `/api/coach/chat`       | `200` streamed     | `429`, `503` when AI disabled    |
+| `POST`   | `/api/coach/parse`      | `200`              | `422` unparseable, `503`         |
+| `GET`    | `/api/health`           | `200`              | —                                |
+
+Errors use a single envelope so the frontend has exactly one shape to handle:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "One or more fields are invalid.",
+    "details": [
+      { "field": "coffeeGrams", "message": "Must be greater than 0" }
+    ],
+    "requestId": "01J8X..."
+  }
+}
+```
+
+---
+
+## 5. Database strategy — migrations now, connection later
+
+The instruction is to have the full schema ready without wiring up a live
+database yet. That constraint is met with the repository pattern rather than by
+leaving the app half-built.
+
+**How it works.** `BrewRepository` is an interface in
+`backend/src/repositories/brew.repository.ts`. Two adapters implement it:
+
+- `InMemoryBrewRepository` — seeded from `supabase/seed.sql` data mirrored as a
+  TypeScript fixture. Used in v1 and in every test run.
+- `DrizzleBrewRepository` — real Postgres, written and unit-tested against the
+  same contract test suite, but not activated.
+
+A factory reads `DATA_SOURCE` from the environment (`memory` | `postgres`) and
+returns the right one. Turning on Supabase means setting two environment
+variables in Vercel and applying the migrations. No application code changes.
+
+**Migration authorship.** The Drizzle schema in `backend/src/db/schema.ts` is
+the source of truth for types. `drizzle-kit generate` emits SQL into
+`supabase/migrations/`, and every generated file is read and edited by hand
+before it is committed — generated SQL is a draft, not a deliverable.
+
+### 5.1 Planned migrations
+
+| File                    | Contents                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `0000_extensions.sql`   | `pgcrypto`, `citext`                                                                        |
+| `0001_profiles.sql`     | `profiles` mirroring `auth.users`, ready for Supabase Auth                                  |
+| `0002_brew_methods.sql` | Lookup table + seed (V60, Aeropress, Drip, French Press, Espresso, Chemex, Moka, Cold Brew) |
+| `0003_brews.sql`        | Core table, constraints, indexes, `updated_at` trigger                                      |
+| `0004_flavor_tags.sql`  | `flavor_tags` + `brew_flavor_tags` join, for AI-extracted descriptors                       |
+| `0005_ai.sql`           | `ai_conversations`, `ai_messages`, `ai_suggestions`                                         |
+| `0006_views.sql`        | `brew_stats` view, method-level aggregates                                                  |
+| `0007_rls.sql`          | Row Level Security enabled on every table, owner-scoped policies                            |
+
+### 5.2 `brews` table, in detail
+
+| Column                      | Type                                                              | Notes                                                     |
+| --------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------- |
+| `id`                        | `uuid` PK                                                         | `gen_random_uuid()`                                       |
+| `user_id`                   | `uuid` FK → `profiles`                                            | Nullable in v1, `NOT NULL` when auth lands                |
+| `beans`                     | `text NOT NULL`                                                   | `CHECK (length(trim(beans)) > 0)`                         |
+| `method_id`                 | `smallint` FK → `brew_methods`                                    | `ON DELETE RESTRICT`                                      |
+| `coffee_grams`              | `numeric(6,2) NOT NULL`                                           | `CHECK (coffee_grams > 0 AND coffee_grams <= 500)`        |
+| `water_grams`               | `numeric(7,2) NOT NULL`                                           | `CHECK (water_grams > 0 AND water_grams <= 5000)`         |
+| `brew_ratio`                | `numeric GENERATED ALWAYS AS (water_grams / coffee_grams) STORED` | Computed in the database, never in application code       |
+| `rating`                    | `smallint NOT NULL`                                               | `CHECK (rating BETWEEN 1 AND 5)`                          |
+| `tasting_notes`             | `text NOT NULL`                                                   | Non-empty, per the brief's validation rule                |
+| `brewed_at`                 | `timestamptz NOT NULL DEFAULT now()`                              | Separate from `created_at` — you can log yesterday's brew |
+| `created_at` / `updated_at` | `timestamptz`                                                     | `updated_at` maintained by trigger                        |
+| `deleted_at`                | `timestamptz`                                                     | Soft delete; `DELETE /api/brews/:id` sets it              |
+
+Indexes: `(user_id, brewed_at DESC)` for the list view, `(method_id)` for the
+filter, partial index `WHERE deleted_at IS NULL`.
+
+The generated `brew_ratio` column and the soft delete are deliberate: they are
+the details that show the schema was designed rather than transcribed from the
+wireframe.
+
+---
+
+## 6. The AI layer
+
+The rule that governs every decision here: **the AI must make the app better at
+its actual job.** A chat bubble in the corner that answers general coffee trivia
+adds nothing. These three features use data only this app has.
+
+### 6.1 Quick Log — natural language to a validated brew
+
+The user types or dictates:
+
+> `18g of the Ethiopian through the V60, 300 water, tasted like blackcurrant and tea, solid 4`
+
+Gemini returns a **Zod-typed structured object**, not free text. It is parsed
+against the exact same `createBrewSchema` the API uses. The result opens the
+normal Add form, pre-filled, with a diff highlight on what was inferred. The
+user confirms or edits before anything is saved.
+
+Nothing is ever written to the database without a human pressing Save. That is
+stated in the README, because it is a design position, not an oversight.
+
+### 6.2 Brew Coach — a tool-calling agent over your own log
+
+An agent loop (AI SDK `generateText` with `tools` and a `stopWhen` step limit)
+with four read-only tools:
+
+| Tool               | Purpose                                                      |
+| ------------------ | ------------------------------------------------------------ |
+| `listBrews`        | Filtered history — method, rating range, date range          |
+| `getBrewStats`     | Aggregates: average rating per method, ratio distribution    |
+| `findSimilarBrews` | Brews sharing beans or method, for like-for-like comparison  |
+| `proposeBrew`      | Emits a candidate brew for the user to confirm — never saves |
+
+Which makes questions like these answerable with real numbers:
+
+- "What ratio gives me my best V60s?"
+- "Why are my Aeropress brews worse than my pour-overs?"
+- "What should I change about the Ethiopian tomorrow?"
+
+The answer streams token by token. Every tool call the agent made is shown to
+the user in a collapsible trace. Showing the agent's work rather than hiding it
+is the difference between a demo and a product.
+
+### 6.3 Flavour tagging
+
+On save, tasting notes are normalised into a controlled vocabulary of flavour
+tags (`stone fruit`, `chocolate`, `floral`, `nutty`) written to
+`brew_flavor_tags`. This turns free text into something filterable and
+chartable, and it is the reason that join table exists.
+
+### 6.4 Guardrails
+
+These are the parts a reviewer will look for.
+
+- `GEMINI_API_KEY` is read on the **backend only**. The browser never sees it,
+  never proxies it, never receives it in a response.
+- **Graceful degradation.** With no key set, `/api/coach/*` returns `503` with a
+  clear code, the frontend hides the AI surfaces, and every requirement in the
+  brief still works perfectly. A reviewer without a Gemini key gets a fully
+  functional app.
+- **Rate limiting** on AI routes — token bucket, per IP, returning `429` with
+  `Retry-After`.
+- **Input caps** on prompt length and conversation history size.
+- **Timeout and abort** on every model call, with a typed fallback response.
+- **No secrets, no PII in prompts.** The tools return only the caller's own brew
+  rows.
+- **Cost visibility.** Token usage per request is logged and surfaced in the
+  trace panel.
+- **Tested without the network.** The provider sits behind an interface with a
+  deterministic fake used in CI, so AI tests are fast and free.
+
+---
+
+## 7. Git workflow, branch protection, and CI
+
+### 7.1 Branching
+
+`main` is protected and always deployable. All work happens on short-lived
+branches merged by pull request with squash merge and linear history.
+
+Branch names: `feat/brew-crud-api`, `fix/filter-reset`, `chore/ci-coverage`,
+`docs/deployment-notes`.
+
+Commits follow Conventional Commits, enforced by `commitlint` on a Husky
+`commit-msg` hook. `lint-staged` runs ESLint and Prettier on staged files
+pre-commit, so unformatted code cannot reach a branch.
+
+### 7.2 Branch protection rules on `main`
+
+- Require a pull request before merging
+- Require all status checks below to pass
+- Require branches to be up to date before merging
+- Require linear history
+- Require conversation resolution before merging
+- Block force pushes and deletions
+- Include administrators
+
+### 7.3 Pipeline stages — `.github/workflows/ci.yml`
+
+Runs on every push and pull request. Stages 2–7 run in parallel after install.
+
+| #   | Stage       | What it does                                                                                            | Fails the build when                          |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| 1   | `install`   | Checkout, Node 24, `npm ci`, cache `node_modules`                                                       | Lockfile out of sync                          |
+| 2   | `lint`      | ESLint (flat config) + Prettier `--check` across all workspaces                                         | Any error or formatting drift                 |
+| 3   | `typecheck` | `tsc --noEmit` per workspace                                                                            | Any type error                                |
+| 4   | `test:unit` | Vitest, frontend + backend, coverage reporter                                                           | Coverage below 80% lines / 75% branches       |
+| 5   | `test:api`  | Hono test client against the full route stack with the in-memory adapter                                | Any contract or status-code regression        |
+| 6   | `sql`       | Migration lint: ordered filenames, non-empty, terminated statements, no `DROP` without a paired comment | Any violation                                 |
+| 7   | `security`  | `npm audit --audit-level=high`, `gitleaks` full-history secret scan                                     | Any high-severity advisory or detected secret |
+| 8   | `build`     | Vite production build + backend `tsc` build, bundle size budget                                         | Build failure or budget exceeded              |
+| 9   | `e2e`       | Playwright: add → filter → edit → delete against the built app                                          | Any journey failure                           |
+
+Stage 7 is the one that matters most for the "no secrets in the repo"
+requirement: `gitleaks` scans the **entire history**, not just the diff, so a
+secret committed and later removed still fails the build.
+
+---
+
+## 8. Deployment
+
+Two Vercel projects from this one repository:
+
+| Project     | Root directory | Output                                       |
+| ----------- | -------------- | -------------------------------------------- |
+| `crema-web` | `frontend`     | Static SPA on the CDN                        |
+| `crema-api` | `backend`      | Vercel Functions from `backend/api/index.ts` |
+
+Both have "Include files outside the Root Directory" enabled so they can resolve
+the `shared/` workspace package.
+
+Environment variables, set in the Vercel dashboard only — never in the repo:
+
+| Variable            | Project | Notes                                 |
+| ------------------- | ------- | ------------------------------------- |
+| `VITE_API_BASE_URL` | web     | Public by design                      |
+| `GEMINI_API_KEY`    | api     | Secret. Backend only.                 |
+| `GEMINI_MODEL`      | api     | e.g. a Gemini Flash id                |
+| `DATA_SOURCE`       | api     | `memory` for v1                       |
+| `DATABASE_URL`      | api     | Added only when Supabase is connected |
+| `CORS_ORIGIN`       | api     | The web project's domain              |
+
+`.env.example` documents every variable with a comment and a safe placeholder.
+`.gitignore` excludes `.env`, `.env.*`, `!.env.example`, and local tooling
+directories.
+
+Preview deployments run on every pull request, so each PR carries a live URL a
+reviewer can click.
+
+---
+
+## 9. Acceptance criteria
+
+Every line is a check that must be green before the project is called done.
+
+**Brief requirements**
+
+- [ ] Create a brew and persist it
+- [ ] List view of all brews
+- [ ] Filter list by brew method
+- [ ] Edit and update a brew
+- [ ] Delete a brew
+- [ ] Frontend framework in `frontend/`, backend framework in `backend/`
+- [ ] CSS framework in use
+- [ ] ORM over a SQL database
+- [ ] Sensible component decomposition
+- [ ] UI follows the wireframes
+- [ ] Responsive at 320px, 768px, 1280px
+- [ ] Page title reads `Brews: {brewCount}` and updates live
+- [ ] Create and edit forms block submission on any blank field
+- [ ] JSON API exposing CRUD at `/api/brews`
+- [ ] Server-side validation of every field
+- [ ] Correct HTTP status codes throughout
+- [ ] `Documentation.md` with setup instructions and description
+- [ ] Tidy git history, one descriptive commit per feature
+- [ ] No hardcoded secrets, all config from env, `.env.example` present
+- [ ] Deployed, with the URL in `deployment.md`
+
+**Beyond the brief**
+
+- [ ] Full Supabase migration set, reviewed and ordered
+- [ ] Repository pattern with two adapters and a shared contract test suite
+- [ ] Quick Log natural-language capture with human confirmation
+- [ ] Brew Coach agent with four tools and a visible trace
+- [ ] App fully functional with no `GEMINI_API_KEY` set
+- [ ] `main` protected, all nine CI stages green
+- [ ] `gitleaks` clean across full history
+- [ ] Coverage thresholds met
+- [ ] Playwright journey passing
+- [ ] Keyboard-navigable, WCAG AA contrast, Lighthouse accessibility ≥ 95
+
+---
+
+## 10. Delivery phases
+
+Each phase is one or more pull requests into protected `main`. Progress against
+these phases is what STATUS.md tracks.
+
+| Phase              | Deliverable                                                                       | Exit criteria                                        |
+| ------------------ | --------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **0 — Foundation** | Monorepo, TypeScript, tooling, Husky, `.gitignore`, `.env.example`, docs skeleton | `npm run verify` passes on a clean clone             |
+| **1 — Pipeline**   | `ci.yml` with all nine stages, PR template, CODEOWNERS, branch protection         | A deliberately broken PR is blocked by CI            |
+| **2 — Schema**     | Drizzle schema, all eight migrations, seed data, `docs/architecture.md`           | Migrations apply cleanly to a scratch Postgres in CI |
+| **3 — API**        | Hono app, services, in-memory repository, full CRUD, error envelope, tests        | Every row of the section 4.4 table is tested         |
+| **4 — UI**         | Design system, list, filter, add/edit dialog, delete, empty and error states      | Wireframes matched, responsive, brief's UI rules met |
+| **5 — Polish**     | Optimistic updates, toasts, skeletons, focus management, motion, a11y pass        | Lighthouse ≥ 95 accessibility                        |
+| **6 — AI**         | Provider abstraction, Quick Log, Coach agent, tools, trace UI, guardrails         | Works with a key; degrades cleanly without one       |
+| **7 — Ship**       | Vercel projects, custom domain, `deployment.md`, README, demo data, screenshots   | Live URL, green pipeline, all of section 9 checked   |
+
+Phases 3 and 4 can overlap once the API contract in `shared/` is frozen.
+
+---
+
+## 11. Decisions taken
+
+Settled 2026-08-05. Phase 0 is unblocked.
+
+1. **Backend — Hono.** Web-standard `Request`/`Response`, first-class
+   TypeScript, deploys to Vercel Functions without an adapter, and its test
+   client exercises the full route stack without binding a port. Express was the
+   conservative alternative; the layering in section 4.2 keeps that door open at
+   a cost of roughly thirty lines if it is ever needed.
+2. **Frontend — Vite + React 19.** The brief asks for a genuine frontend/backend
+   split, and a standalone SPA talking to the API over real HTTP proves the API
+   is real. Next.js was rejected here precisely because server actions and route
+   handlers blur the boundary the brief asks for.
+3. **AI scope — all three features in section 6.** Quick Log, the Brew Coach
+   agent, and flavour tagging all land in Phase 6, after everything the brief
+   grades is already complete and shippable. The downside risk is contained by
+   the phase ordering; the differentiation is the point of the project.
+4. **Domain — `*.vercel.app`, no custom domain.** Free, respectable, and
+   satisfies the brief in full. A custom domain can be attached later without
+   changing a line of code or configuration.
+
+---
+
+## 12. Risks
+
+| Risk                                            | Mitigation                                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Gemini free-tier rate limits during a live demo | Response caching, `429` handled with a friendly message, seeded demo transcript available offline |
+| Reviewer has no Gemini key                      | Graceful degradation is an acceptance criterion, not a nice-to-have                               |
+| Scope creep from the AI work                    | AI is Phase 6. Everything the brief requires is complete and shippable at the end of Phase 5      |
+| Vercel monorepo build resolution                | "Include files outside Root Directory" verified in Phase 1, before any real code depends on it    |
+| Over-engineering                                | Section 1.3 states what is deliberately not built, and the README repeats it                      |
