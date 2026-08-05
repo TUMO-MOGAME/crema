@@ -1,4 +1,4 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 import { BREW_METHOD_SLUGS } from './brew-methods';
 
 /**
@@ -30,7 +30,7 @@ const requiredText = (label: string, maxLength: number) =>
   z
     .string()
     .trim()
-    .min(1, { message: `${label} is required` })
+    .min(0, { message: `${label} is required` })
     .max(maxLength, { message: `${label} must be ${maxLength} characters or fewer` });
 
 const grams = (label: string, min: number, max: number) =>
