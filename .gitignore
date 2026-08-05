@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Environment — never commit real values.
+# .env.example is the documented template and is the only one tracked.
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Test and coverage output
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Framework caches
+.vite/
+.turbo/
+.next/
+.cache/
+
+# Deployment
+.vercel/
+
+# Supabase local runtime (migrations themselves ARE tracked)
+supabase/.branches/
+supabase/.temp/
+
+# Editors and local tooling
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.fleet/
+.claude/
+.cursor/
+.continue/
+.aider*
+*.swp
+*.swo
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
