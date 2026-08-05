@@ -1,0 +1,7 @@
+# Every path has an owner, so no change reaches main unreviewed.
+* @TUMO-MOGAME
+
+# Called out separately because a mistake in these is expensive to undo:
+# a migration cannot be edited once applied, and CI config gates everything else.
+/supabase/migrations/ @TUMO-MOGAME
+/.github/ @TUMO-MOGAME

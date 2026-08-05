@@ -106,13 +106,23 @@ Built beyond the minimum, because the rest of the work leans on it:
 
 ### Phase 1 — Pipeline
 
-- [ ] `ci.yml` — install, lint, typecheck, unit, api, sql, security, build, e2e
-- [ ] Dependency caching
-- [ ] Coverage thresholds enforced
-- [ ] `gitleaks` scanning full history
-- [ ] Pull request template and CODEOWNERS
-- [ ] Branch protection applied to `main`
+- [x] `ci.yml` — nine stages: lint, typecheck, unit, api, migrations, security,
+      build, e2e, and an aggregate `CI` gate
+- [x] Dependency install as a composite action, npm cache restored per job
+- [x] Coverage thresholds enforced — backend 100% lines, web 94%
+- [x] `gitleaks` scanning full history via the pinned binary, not the
+      marketplace action, which requires a paid licence on org-owned repos
+- [x] `npm audit --audit-level=high`
+- [x] Migration linter — filename format, sequence gaps, unterminated
+      statements, uncommented destructive statements
+- [x] Bundle size budget on gzip output
+- [x] Playwright e2e against production builds of both sides
+- [x] Pull request template and CODEOWNERS
+- [ ] Branch protection applied to `main` on the portfolio repo
 - [ ] Verified: a deliberately failing PR is blocked
+
+The aggregate `CI` job is the single required status check, so adding or
+renaming a stage never means editing the protection rule.
 
 ### Phase 2 — Schema
 
