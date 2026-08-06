@@ -46,14 +46,14 @@ describe('listing', () => {
     await service.create(input);
     await service.create({ ...input, method: 'espresso', coffeeGrams: 18, waterGrams: 36 });
 
-    await expect(service.list()).resolves.toHaveLength(2);
+    await expect(service.list()).resolves.toMatchObject({ total: 2 });
   });
 
   it('narrows to a method when one is given', async () => {
     await service.create(input);
     await service.create({ ...input, method: 'espresso', coffeeGrams: 18, waterGrams: 36 });
 
-    const brews = await service.list({ method: 'espresso' });
+    const { brews } = await service.list({ method: 'espresso' });
 
     expect(brews).toHaveLength(1);
     expect(brews[0]?.method).toBe('espresso');
@@ -130,7 +130,7 @@ describe('the rules a field schema cannot express', () => {
   it('stores nothing when it refuses', async () => {
     await appErrorFrom(service.create({ ...input, coffeeGrams: 288, waterGrams: 18 }));
 
-    await expect(service.list()).resolves.toEqual([]);
+    await expect(service.list()).resolves.toMatchObject({ brews: [], total: 0 });
   });
 });
 
@@ -185,7 +185,7 @@ describe('deleting', () => {
 
     await service.remove(created.id);
 
-    await expect(service.list()).resolves.toEqual([]);
+    await expect(service.list()).resolves.toMatchObject({ brews: [], total: 0 });
   });
 
   it('is a not-found error when nothing has that id', async () => {

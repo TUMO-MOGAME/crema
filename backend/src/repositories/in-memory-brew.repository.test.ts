@@ -17,19 +17,19 @@ describe('InMemoryBrewRepository seeding', () => {
   it('starts empty when given no seed', async () => {
     const repository = new InMemoryBrewRepository();
 
-    await expect(repository.list()).resolves.toEqual([]);
+    await expect(repository.list()).resolves.toMatchObject({ brews: [], total: 0 });
   });
 
   it('loads the demo brews, so a fresh app is not an empty screen', async () => {
     const repository = new InMemoryBrewRepository(seedBrewInputs());
 
-    await expect(repository.list()).resolves.toHaveLength(SEED_BREWS.length);
+    await expect(repository.list()).resolves.toMatchObject({ total: SEED_BREWS.length });
   });
 
   it('seeds brews the shared contract accepts', async () => {
     const repository = new InMemoryBrewRepository(seedBrewInputs());
 
-    const brews = await repository.list();
+    const { brews } = await repository.list();
 
     for (const brew of brews) {
       expect(() => brewSchema.parse(brew)).not.toThrow();
@@ -39,7 +39,7 @@ describe('InMemoryBrewRepository seeding', () => {
   it('dates the seed relative to now, so the demo data never reads as stale', async () => {
     const repository = new InMemoryBrewRepository(seedBrewInputs());
 
-    const [newest] = await repository.list();
+    const [newest] = (await repository.list()).brews;
     const daysOld = (Date.now() - Date.parse(newest?.brewedAt ?? '')) / 86_400_000;
 
     // The most recent seeded brew is one day old.
@@ -50,7 +50,7 @@ describe('InMemoryBrewRepository seeding', () => {
   it('seeds the wireframe brews in the order the wireframes show them', async () => {
     const repository = new InMemoryBrewRepository(seedBrewInputs());
 
-    const brews = await repository.list();
+    const { brews } = await repository.list();
 
     expect(brews.slice(0, 3).map((brew) => brew.beans)).toEqual([
       'Zimbabwean highlands',
@@ -72,6 +72,6 @@ describe('InMemoryBrewRepository seeding', () => {
       tastingNotes: 'Blackcurrant, jasmine, tea-like and clean',
     });
 
-    await expect(other.list()).resolves.toEqual([]);
+    await expect(other.list()).resolves.toMatchObject({ brews: [], total: 0 });
   });
 });

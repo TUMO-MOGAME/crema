@@ -146,14 +146,20 @@ export function describeBrewRepositoryContract(
 
     describe('list', () => {
       it('is empty before anything is logged', async () => {
-        await expect(repository.list()).resolves.toEqual([]);
+        const page = await repository.list();
+
+        expect(page.brews).toEqual([]);
+        expect(page.total).toBe(0);
       });
 
       it('returns every live brew', async () => {
         await repository.create(aBrew({ brewedAt: daysAgo(1) }));
         await repository.create(aBrew({ brewedAt: daysAgo(2) }));
 
-        await expect(repository.list()).resolves.toHaveLength(2);
+        const page = await repository.list();
+
+        expect(page.brews).toHaveLength(2);
+        expect(page.total).toBe(2);
       });
 
       it('returns the most recent brew first', async () => {
@@ -161,7 +167,7 @@ export function describeBrewRepositoryContract(
         const newest = await repository.create(aBrew({ beans: 'Newest', brewedAt: daysAgo(1) }));
         const middle = await repository.create(aBrew({ beans: 'Middle', brewedAt: daysAgo(4) }));
 
-        const brews = await repository.list();
+        const { brews } = await repository.list();
 
         // Insertion order is deliberately not brew order: the list view sorts
         // by when the coffee was made, not by when it was typed in.
@@ -173,16 +179,21 @@ export function describeBrewRepositoryContract(
         await repository.create(aBrew({ method: 'espresso' }));
         await repository.create(aBrew({ method: 'chemex' }));
 
-        const brews = await repository.list({ method: 'v60' });
+        const page = await repository.list({ method: 'v60' });
 
-        expect(brews).toHaveLength(1);
-        expect(brews[0]?.id).toBe(v60.id);
+        expect(page.brews).toHaveLength(1);
+        expect(page.brews[0]?.id).toBe(v60.id);
+        // The total describes the filter, not the whole log.
+        expect(page.total).toBe(1);
       });
 
       it('returns nothing for a method with no brews, rather than everything', async () => {
         await repository.create(aBrew({ method: 'v60' }));
 
-        await expect(repository.list({ method: 'cold-brew' })).resolves.toEqual([]);
+        const page = await repository.list({ method: 'cold-brew' });
+
+        expect(page.brews).toEqual([]);
+        expect(page.total).toBe(0);
       });
 
       it('leaves out deleted brews', async () => {
@@ -190,16 +201,100 @@ export function describeBrewRepositoryContract(
         const removed = await repository.create(aBrew({ beans: 'Removed' }));
 
         await repository.softDelete(removed.id);
-        const brews = await repository.list();
+        const page = await repository.list();
 
-        expect(brews.map((brew) => brew.id)).toEqual([kept.id]);
+        expect(page.brews.map((brew) => brew.id)).toEqual([kept.id]);
+        expect(page.total).toBe(1);
       });
 
       it('leaves out deleted brews when filtering too', async () => {
         const removed = await repository.create(aBrew({ method: 'aeropress' }));
         await repository.softDelete(removed.id);
 
-        await expect(repository.list({ method: 'aeropress' })).resolves.toEqual([]);
+        const page = await repository.list({ method: 'aeropress' });
+
+        expect(page.brews).toEqual([]);
+        expect(page.total).toBe(0);
+      });
+    });
+
+    /**
+     * Paging is where two adapters most easily drift, because one slices an
+     * array and the other writes LIMIT/OFFSET — and an off-by-one in either is
+     * invisible until a brew goes missing between page one and page two.
+     */
+    describe('list paging', () => {
+      /** Distinct brew dates, so the order under paging is never a tiebreak. */
+      async function threeBrews() {
+        const oldest = await repository.create(aBrew({ beans: 'Oldest', brewedAt: daysAgo(3) }));
+        const middle = await repository.create(aBrew({ beans: 'Middle', brewedAt: daysAgo(2) }));
+        const newest = await repository.create(aBrew({ beans: 'Newest', brewedAt: daysAgo(1) }));
+
+        return { oldest, middle, newest };
+      }
+
+      it('returns only as many brews as the limit allows', async () => {
+        const { newest } = await threeBrews();
+
+        const page = await repository.list({ limit: 1 });
+
+        expect(page.brews.map((brew) => brew.id)).toEqual([newest.id]);
+        expect(page.limit).toBe(1);
+        expect(page.offset).toBe(0);
+      });
+
+      it('reports the total that matched, not the size of the page', async () => {
+        await threeBrews();
+
+        const page = await repository.list({ limit: 1 });
+
+        expect(page.brews).toHaveLength(1);
+        expect(page.total).toBe(3);
+      });
+
+      it('skips the offset and keeps the order', async () => {
+        const { middle, oldest } = await threeBrews();
+
+        const page = await repository.list({ limit: 2, offset: 1 });
+
+        expect(page.brews.map((brew) => brew.id)).toEqual([middle.id, oldest.id]);
+        expect(page.offset).toBe(1);
+      });
+
+      it('walks the whole log exactly once across consecutive pages', async () => {
+        const { newest, middle, oldest } = await threeBrews();
+
+        const first = await repository.list({ limit: 2, offset: 0 });
+        const second = await repository.list({ limit: 2, offset: 2 });
+
+        // No brew appears twice, and none is skipped between the pages.
+        expect([...first.brews, ...second.brews].map((brew) => brew.id)).toEqual([
+          newest.id,
+          middle.id,
+          oldest.id,
+        ]);
+      });
+
+      it('answers an offset past the end with an empty page and an honest total', async () => {
+        await threeBrews();
+
+        const page = await repository.list({ offset: 99 });
+
+        expect(page.brews).toEqual([]);
+        // The brews exist; this page just does not contain any of them.
+        expect(page.total).toBe(3);
+      });
+
+      it('pages within a method filter rather than across the whole log', async () => {
+        await repository.create(aBrew({ method: 'v60', brewedAt: daysAgo(1) }));
+        await repository.create(aBrew({ method: 'v60', brewedAt: daysAgo(2) }));
+        await repository.create(aBrew({ method: 'espresso', brewedAt: daysAgo(3) }));
+
+        const page = await repository.list({ method: 'v60', limit: 1 });
+
+        expect(page.brews).toHaveLength(1);
+        expect(page.brews[0]?.method).toBe('v60');
+        expect(page.total).toBe(2);
       });
     });
 
@@ -235,8 +330,8 @@ export function describeBrewRepositoryContract(
         const updated = await repository.update(created.id, { method: 'moka-pot' });
 
         expect(updated?.method).toBe('moka-pot');
-        await expect(repository.list({ method: 'moka-pot' })).resolves.toHaveLength(1);
-        await expect(repository.list({ method: 'v60' })).resolves.toEqual([]);
+        await expect(repository.list({ method: 'moka-pot' })).resolves.toMatchObject({ total: 1 });
+        await expect(repository.list({ method: 'v60' })).resolves.toMatchObject({ total: 0 });
       });
 
       it('rounds grams the same way create does', async () => {
@@ -280,7 +375,7 @@ export function describeBrewRepositoryContract(
         await repository.softDelete(created.id);
 
         await expect(repository.update(created.id, { rating: 3 })).resolves.toBeNull();
-        await expect(repository.list()).resolves.toEqual([]);
+        await expect(repository.list().then((page) => page.brews)).resolves.toEqual([]);
       });
     });
 
@@ -290,7 +385,7 @@ export function describeBrewRepositoryContract(
 
         await expect(repository.softDelete(created.id)).resolves.toBe(true);
         await expect(repository.findById(created.id)).resolves.toBeNull();
-        await expect(repository.list()).resolves.toEqual([]);
+        await expect(repository.list().then((page) => page.brews)).resolves.toEqual([]);
       });
 
       it('reports nothing to do for an id nothing was ever stored under', async () => {
@@ -475,7 +570,7 @@ export function describeBrewRepositoryContract(
       it('hands out copies from the list too', async () => {
         const created = await repository.create(aBrew({ beans: 'Original' }));
 
-        const [listed] = await repository.list();
+        const [listed] = (await repository.list()).brews;
         if (listed) listed.beans = 'Tampered with';
 
         const reread = await repository.findById(created.id);
