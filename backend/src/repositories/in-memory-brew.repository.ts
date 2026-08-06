@@ -1,10 +1,12 @@
 import {
   brewMethodLabel,
   BREW_METHOD_SLUGS,
+  BREW_PAGE,
   EMPTY_BREW_STATS,
   type Brew,
   type BrewMethodSlug,
   type BrewMethodStats,
+  type BrewPage,
   type BrewStats,
   type CreateBrewInput,
   type UpdateBrewInput,
@@ -40,14 +42,23 @@ export class InMemoryBrewRepository implements BrewRepository {
     for (const input of seed) this.insert(input);
   }
 
-  list(filter?: BrewFilter): Promise<Brew[]> {
-    const brews = [...this.brews.values()]
+  list(filter?: BrewFilter): Promise<BrewPage> {
+    const matching = [...this.brews.values()]
       .filter((brew) => brew.deletedAt === null)
       .filter((brew) => filter?.method === undefined || brew.method === filter.method)
-      .sort(byMostRecentlyBrewed)
-      .map(toBrew);
+      .sort(byMostRecentlyBrewed);
 
-    return Promise.resolve(brews);
+    // The total is counted before the page is cut, which is the whole point of
+    // returning it: it describes the filter, not the slice.
+    const limit = filter?.limit ?? BREW_PAGE.defaultLimit;
+    const offset = filter?.offset ?? 0;
+
+    return Promise.resolve({
+      brews: matching.slice(offset, offset + limit).map(toBrew),
+      total: matching.length,
+      limit,
+      offset,
+    });
   }
 
   findById(id: string): Promise<Brew | null> {

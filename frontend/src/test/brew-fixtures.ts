@@ -1,4 +1,4 @@
-import { BREW_METHODS, type Brew } from '@crema/shared';
+import { BREW_METHODS, BREW_PAGE, type Brew } from '@crema/shared';
 import { vi } from 'vitest';
 
 /** `fetch` takes three shapes of first argument; only one is already a string. */
@@ -9,10 +9,24 @@ function requestUrl(input: RequestInfo | URL): string {
   return input.url;
 }
 
+/**
+ * A distinct, well-formed id from a small number.
+ *
+ * Fixtures used to carry ids like `'b2'`, which read clearly and are not UUIDs.
+ * That was harmless while the client cast its responses; now that it parses
+ * them against `brewSchema`, a fixture the real API could never have produced
+ * fails validation — correctly. This keeps the ids readable at a glance and
+ * valid at the same time.
+ */
+export function anId(seed: number): string {
+  const tail = String(seed).padStart(12, '0');
+  return `11111111-1111-4111-8111-${tail}`;
+}
+
 /** A brew with everything filled in, so a test varies only what it is about. */
 export function aBrew(overrides: Partial<Brew> = {}): Brew {
   return {
-    id: '11111111-1111-4111-8111-111111111111',
+    id: anId(1),
     beans: 'Ethiopian Yirgacheffe',
     method: 'v60',
     coffeeGrams: 18,
@@ -75,9 +89,23 @@ export function stubApi({
           );
         }
 
-        const filter = /[?&]method=([^&]+)/.exec(url)?.[1];
-        const visible = filter ? brews.filter((brew) => brew.method === filter) : brews;
-        return json(visible);
+        // Pages the same way the API does, so a test that asks for page two
+        // gets page two rather than the whole log with a different envelope
+        // around it. `total` counts what matched the filter, not what fits in
+        // the page — the distinction the real endpoint exists to make.
+        const query = new URLSearchParams(url.split('?')[1] ?? '');
+        const filter = query.get('method');
+        const limit = Number(query.get('limit') ?? BREW_PAGE.defaultLimit);
+        const offset = Number(query.get('offset') ?? 0);
+
+        const matching = filter ? brews.filter((brew) => brew.method === filter) : brews;
+
+        return json({
+          brews: matching.slice(offset, offset + limit),
+          total: matching.length,
+          limit,
+          offset,
+        });
       }
 
       if (method === 'DELETE') return json(null, writeStatus === 200 ? 204 : writeStatus);

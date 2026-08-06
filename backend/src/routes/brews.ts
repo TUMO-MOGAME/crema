@@ -15,25 +15,31 @@ import type { AppEnv } from '../types';
  * knowledge of how anything is stored — the two things that keep a route layer
  * from turning into the place everything ends up.
  *
- * | Method | Path              | Success        | Errors                     |
- * | ------ | ----------------- | -------------- | -------------------------- |
- * | GET    | /api/brews        | 200            | 400 unknown method filter  |
- * | GET    | /api/brews/:id    | 200            | 404                        |
- * | POST   | /api/brews        | 201 + Location | 400 shape, 422 semantic    |
- * | PATCH  | /api/brews/:id    | 200            | 400 shape, 404, 422        |
- * | DELETE | /api/brews/:id    | 204            | 404                        |
+ * | Method | Path              | Success        | Errors                       |
+ * | ------ | ----------------- | -------------- | ---------------------------- |
+ * | GET    | /api/brews        | 200 (page)     | 400 bad method/limit/offset  |
+ * | GET    | /api/brews/:id    | 200            | 404                          |
+ * | POST   | /api/brews        | 201 + Location | 400 shape, 413, 422 semantic |
+ * | PATCH  | /api/brews/:id    | 200            | 400 shape, 404, 413, 422     |
+ * | DELETE | /api/brews/:id    | 204            | 404                          |
+ *
+ * `GET /api/brews` answers with a page envelope — `{ brews, total, limit,
+ * offset }` — rather than a bare array. It used to return every row, which is
+ * a query that works right up until the log is large and then fails without
+ * warning. The envelope also carries the count, so a client no longer has to
+ * fetch the whole log a second time just to say how big it is.
  */
 export function createBrewRoutes(service: BrewService): Hono<AppEnv> {
   return new Hono<AppEnv>()
 
     .get('/brews', async (c) => {
-      const method = c.req.query('method');
-
       // `?method=` with no value is the filter dropdown's "All" option, and
       // means the same as omitting the parameter. An unknown value is a 400 —
       // silently ignoring it would show every brew to someone who asked for one
-      // kind and let them believe that was the answer.
-      const query = parseOrThrow(brewQuerySchema, method ? { method } : {});
+      // kind and let them believe that was the answer. `limit` and `offset` are
+      // read the same way: absent means "the default page", present and
+      // malformed means 400 rather than a silently ignored parameter.
+      const query = parseOrThrow(brewQuerySchema, present(c, 'method', 'limit', 'offset'));
 
       return c.json(await service.list(query));
     })
@@ -68,6 +74,26 @@ export function createBrewRoutes(service: BrewService): Hono<AppEnv> {
       // concerned; what the row does behind that is the adapter's business.
       return c.body(null, 204);
     });
+}
+
+/**
+ * The named query parameters that were actually supplied, with empty values
+ * treated as absent.
+ *
+ * `?method=&limit=` is what an untouched form control sends, and it means "I
+ * did not choose", not "I chose the empty string". Handing the schema only the
+ * keys that carry a value is what lets every one of them stay `.optional()`
+ * without also having to accept `''` as a legal value for each.
+ */
+function present(c: Context<AppEnv>, ...names: string[]): Record<string, string> {
+  const supplied: Record<string, string> = {};
+
+  for (const name of names) {
+    const value = c.req.query(name);
+    if (value) supplied[name] = value;
+  }
+
+  return supplied;
 }
 
 const brewIdSchema = z.string().uuid();

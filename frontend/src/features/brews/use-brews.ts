@@ -1,6 +1,6 @@
 import type { Brew, BrewMethodSlug, CreateBrewInput, UpdateBrewInput } from '@crema/shared';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { brewKeys, brewsApi } from './brews-api';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { brewKeys, brewsApi, PAGE_SIZE } from './brews-api';
 
 /**
  * The brew log's data, as hooks.
@@ -12,11 +12,38 @@ import { brewKeys, brewsApi } from './brews-api';
  * be built and tested properly instead of assumed.
  */
 
+/**
+ * One filter's worth of brews, a page at a time.
+ *
+ * Infinite rather than a page number, because a log is read by scrolling down
+ * it: "show me more" is the only navigation it wants, and page numbers would
+ * make the reader keep their place themselves.
+ *
+ * The count comes back in the same response as the brews, which is the reason
+ * the endpoint returns an envelope. It used to come from a *second* query for
+ * the entire unfiltered log, fired on every render of the filtered view — the
+ * page fetched all the brews in order to count the brews it had not fetched.
+ */
 export function useBrews(method?: BrewMethodSlug) {
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: brewKeys.list(method),
-    queryFn: () => brewsApi.list(method),
+    queryFn: ({ pageParam }) => brewsApi.list({ method, limit: PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (last) => {
+      const loaded = last.offset + last.brews.length;
+      return loaded < last.total ? loaded : undefined;
+    },
   });
+
+  const pages = query.data?.pages ?? [];
+
+  return {
+    ...query,
+    /** Every page so far, flattened — the list renders one sequence, not pages. */
+    brews: pages.flatMap((page) => page.brews),
+    /** How many brews match the current filter, loaded or not. */
+    total: pages[0]?.total ?? 0,
+  };
 }
 
 export function useBrewMethods() {
@@ -34,7 +61,6 @@ function useInvalidateBrews() {
 
   return () => {
     void queryClient.invalidateQueries({ queryKey: brewKeys.all });
-    void queryClient.invalidateQueries({ queryKey: brewKeys.stats() });
   };
 }
 

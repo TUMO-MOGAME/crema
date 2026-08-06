@@ -2,7 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aBrew, stubApi } from '../test/brew-fixtures';
+import { aBrew, anId, stubApi } from '../test/brew-fixtures';
 import { App } from './App';
 import { AppProviders } from './providers';
 
@@ -32,7 +32,7 @@ afterEach(() => {
 
 describe('the brew list', () => {
   it('shows every brew the API returns', async () => {
-    stubApi({ brews: [aBrew(), aBrew({ id: 'b2', beans: 'Kenyan AA' })] });
+    stubApi({ brews: [aBrew(), aBrew({ id: anId(2), beans: 'Kenyan AA' })] });
     renderApp();
 
     expect(await screen.findByText('Ethiopian Yirgacheffe')).toBeInTheDocument();
@@ -43,7 +43,12 @@ describe('the brew list', () => {
     stubApi({ brews: [aBrew()] });
     renderApp();
 
-    const row = await screen.findByRole('listitem');
+    // Waits on the brew itself rather than on the row element. Both arrive at
+    // the same moment, but `findByRole('listitem')` also has to not match the
+    // skeleton rows, so it only starts succeeding once they are gone — a
+    // narrower window, and one that closes under parallel load.
+    await screen.findByText('Ethiopian Yirgacheffe');
+    const row = screen.getByRole('listitem');
 
     expect(within(row).getByText('V60')).toBeInTheDocument();
     expect(within(row).getByText('18g')).toBeInTheDocument();
@@ -52,7 +57,7 @@ describe('the brew list', () => {
   });
 
   it('titles the tab with the brew count, as the brief requires', async () => {
-    stubApi({ brews: [aBrew(), aBrew({ id: 'b2' }), aBrew({ id: 'b3' })] });
+    stubApi({ brews: [aBrew(), aBrew({ id: anId(2) }), aBrew({ id: anId(3) })] });
     renderApp();
 
     await waitFor(() => expect(document.title).toBe('Brews: 3'));
@@ -89,7 +94,7 @@ describe('the method filter', () => {
 
   it('narrows the list to the chosen method', async () => {
     stubApi({
-      brews: [aBrew(), aBrew({ id: 'b2', beans: 'Brazilian Santos', method: 'espresso' })],
+      brews: [aBrew(), aBrew({ id: anId(2), beans: 'Brazilian Santos', method: 'espresso' })],
     });
     const { user } = renderApp();
 
@@ -113,7 +118,7 @@ describe('the method filter', () => {
 
   it('keeps the tab count on the whole log, not the filtered view', async () => {
     stubApi({
-      brews: [aBrew(), aBrew({ id: 'b2', beans: 'Brazilian Santos', method: 'espresso' })],
+      brews: [aBrew(), aBrew({ id: anId(2), beans: 'Brazilian Santos', method: 'espresso' })],
     });
     const { user } = renderApp();
 
@@ -226,7 +231,7 @@ describe('editing a brew', () => {
     expect(screen.getByLabelText('Rating (out of 5)')).toHaveValue(5);
   });
 
-  it('sends only what changed', async () => {
+  it('sends the edited brew to the API', async () => {
     const { calls } = stubApi({ brews: [aBrew()] });
     const { user } = renderApp();
 
@@ -237,6 +242,9 @@ describe('editing a brew', () => {
 
     await waitFor(() => {
       const patch = calls.find((call) => call.method === 'PATCH');
+      // The form submits every field, not a diff — `updateBrewSchema` is
+      // partial so a diff would also be valid, but this is what it sends and
+      // the test says so. It used to be named for the diff it does not send.
       expect(patch?.body).toMatchObject({ rating: 2, beans: 'Ethiopian Yirgacheffe' });
     });
   });
@@ -281,7 +289,9 @@ describe('deleting a brew', () => {
     await openDeleteConfirmation();
 
     expect(within(confirmation()).getByText('Ethiopian Yirgacheffe')).toBeInTheDocument();
-    expect(within(confirmation()).getByText(/cannot be undone/i)).toBeInTheDocument();
+    // "from the app", because the row is soft-deleted rather than removed —
+    // the copy is careful not to promise more finality than the schema has.
+    expect(within(confirmation()).getByText(/cannot undo this from the app/i)).toBeInTheDocument();
   });
 
   it('deletes nothing when the confirmation is dismissed', async () => {
@@ -301,5 +311,115 @@ describe('deleting a brew', () => {
     await user.click(within(confirmation()).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'DELETE')).toBe(true));
+  });
+});
+
+/**
+ * `GET /api/brews` used to return the whole log, and the page fetched it twice:
+ * once for the rows and once more, unfiltered, only to count them. These cases
+ * pin what replaced that — a page at a time, with the count carried in the same
+ * response.
+ */
+describe('paging through a long log', () => {
+  /** More brews than fit in one page, each distinguishable by name. */
+  function manyBrews(count: number) {
+    return Array.from({ length: count }, (_, index) =>
+      aBrew({ id: anId(index + 1), beans: `Brew number ${index + 1}` }),
+    );
+  }
+
+  it('asks for one page rather than the whole log', async () => {
+    const { calls } = stubApi({ brews: manyBrews(120) });
+    renderApp();
+
+    await screen.findByText('Brew number 1');
+
+    const list = calls.find((call) => call.method === 'GET' && call.url.includes('/api/brews?'));
+    expect(list?.url).toContain('limit=50');
+  });
+
+  it('shows the first page and offers the rest', async () => {
+    stubApi({ brews: manyBrews(120) });
+    renderApp();
+
+    await screen.findByText('Brew number 1');
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(50);
+    expect(screen.queryByText('Brew number 51')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Load more' })).toBeInTheDocument();
+    expect(screen.getByText('Showing 50 of 120')).toBeInTheDocument();
+  });
+
+  it('appends the next page rather than replacing the current one', async () => {
+    stubApi({ brews: manyBrews(120) });
+    const { user } = renderApp();
+
+    await screen.findByText('Brew number 1');
+    await user.click(screen.getByRole('button', { name: 'Load more' }));
+
+    expect(await screen.findByText('Brew number 51')).toBeInTheDocument();
+    // The first page is still there — this is a longer list, not a new one.
+    expect(screen.getByText('Brew number 1')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(100);
+  });
+
+  it('stops offering more once the whole log is on screen', async () => {
+    stubApi({ brews: manyBrews(60) });
+    const { user } = renderApp();
+
+    await screen.findByText('Brew number 1');
+    await user.click(screen.getByRole('button', { name: 'Load more' }));
+
+    await screen.findByText('Brew number 51');
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+  });
+
+  it('counts the whole log in the tab title, not the page on screen', async () => {
+    stubApi({ brews: manyBrews(120) });
+    renderApp();
+
+    await screen.findByText('Brew number 1');
+
+    // 120, from one page-sized request — not from loading 120 brews to count.
+    await waitFor(() => expect(document.title).toBe('Brews: 120'));
+  });
+});
+
+/**
+ * The live region used to wrap the list, so narrowing a filter re-announced
+ * every row. It now carries a summary, which is what a reader needs to hear.
+ */
+describe('what a screen reader is told', () => {
+  it('summarises the list instead of reciting it', async () => {
+    stubApi({ brews: [aBrew(), aBrew({ id: anId(2), beans: 'Kenyan AA' })] });
+    renderApp();
+
+    await screen.findByText('Ethiopian Yirgacheffe');
+
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent('2 brews.');
+    // The rows are for navigating, not for announcing.
+    expect(status).not.toHaveTextContent('Ethiopian Yirgacheffe');
+  });
+
+  it('says how much of a long log is showing', async () => {
+    stubApi({
+      brews: Array.from({ length: 120 }, (_, index) => aBrew({ id: anId(index + 1) })),
+    });
+    renderApp();
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Showing 50 of 120'));
+  });
+
+  it('says when a filter matched nothing', async () => {
+    stubApi({ brews: [aBrew({ method: 'v60' })] });
+    const { user } = renderApp();
+
+    await screen.findByText('Ethiopian Yirgacheffe');
+    await user.selectOptions(screen.getByLabelText('Filter by method'), 'chemex');
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('No brews logged with this method.'),
+    );
   });
 });

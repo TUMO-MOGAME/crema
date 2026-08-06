@@ -79,10 +79,67 @@ export const updateBrewSchema = createBrewSchema
     message: 'Provide at least one field to update',
   });
 
-/** `GET /api/brews` query string. An absent method means "all methods". */
+/**
+ * Paging limits.
+ *
+ * `default` is what a caller who says nothing gets, and it is deliberately
+ * larger than a first screenful so the common case is one request. `max` is the
+ * ceiling a caller can ask for, and it exists because `GET /api/brews` used to
+ * return the entire log — fine at twelve brews, a growing unbounded read at
+ * four thousand, and the kind of thing that is only ever noticed in production.
+ */
+export const BREW_PAGE = {
+  defaultLimit: 50,
+  maxLimit: 200,
+} as const;
+
+/**
+ * `GET /api/brews` query string. An absent method means "all methods".
+ *
+ * `limit` and `offset` arrive as strings from the query string and are coerced,
+ * but only from something numeric — `z.coerce.number()` alone turns `"abc"`
+ * into `NaN` and an empty string into `0`, both of which would be accepted as
+ * "a number" and then behave strangely. The regex makes a malformed page a 400
+ * that names the parameter.
+ */
+const pageNumber = (label: string) =>
+  z
+    .string()
+    .regex(/^\d+$/, { message: `${label} must be a whole number` })
+    .transform(Number);
+
 export const brewQuerySchema = z.object({
   method: brewMethodSchema.optional(),
+
+  limit: pageNumber('limit')
+    .pipe(
+      z
+        .number()
+        .int()
+        .min(1, { message: 'limit must be at least 1' })
+        .max(BREW_PAGE.maxLimit, { message: `limit must be no more than ${BREW_PAGE.maxLimit}` }),
+    )
+    .optional(),
+
+  offset: pageNumber('offset').pipe(z.number().int().min(0)).optional(),
 });
+
+/**
+ * One page of brews, plus what the client needs to ask for the next one.
+ *
+ * `total` is the count of brews matching the filter, not the count in this
+ * page, so a client can render "12 of 340" without a second request. It is the
+ * reason this is an envelope rather than a bare array: the array alone cannot
+ * say how much of the log it represents.
+ */
+export const brewPageSchema = z.object({
+  brews: z.array(brewSchema),
+  total: z.number().int().nonnegative(),
+  limit: z.number().int().positive(),
+  offset: z.number().int().nonnegative(),
+});
+
+export type BrewPage = z.infer<typeof brewPageSchema>;
 
 export type Brew = z.infer<typeof brewSchema>;
 export type CreateBrewInput = z.infer<typeof createBrewSchema>;

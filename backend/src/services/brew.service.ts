@@ -1,6 +1,14 @@
-import type { Brew, BrewQuery, BrewStats, CreateBrewInput, UpdateBrewInput } from '@crema/shared';
+import {
+  BREW_PAGE,
+  type Brew,
+  type BrewPage,
+  type BrewQuery,
+  type BrewStats,
+  type CreateBrewInput,
+  type UpdateBrewInput,
+} from '@crema/shared';
 import { AppError } from '../lib/app-error';
-import type { BrewRepository } from '../repositories/brew.repository';
+import type { BrewFilter, BrewRepository } from '../repositories/brew.repository';
 
 /**
  * The rules about brews that are neither HTTP nor storage.
@@ -18,8 +26,22 @@ import type { BrewRepository } from '../repositories/brew.repository';
 export class BrewService {
   constructor(private readonly repository: BrewRepository) {}
 
-  list(query: BrewQuery = {}): Promise<Brew[]> {
-    return this.repository.list(query.method === undefined ? {} : { method: query.method });
+  /**
+   * One page of the log.
+   *
+   * Resolving the page defaults here rather than in the adapters is what keeps
+   * both of them agreeing about what an unspecified `limit` means, and puts the
+   * ceiling somewhere a route cannot forget to apply.
+   */
+  list(query: BrewQuery = {}): Promise<BrewPage> {
+    const filter: BrewFilter = {
+      limit: Math.min(query.limit ?? BREW_PAGE.defaultLimit, BREW_PAGE.maxLimit),
+      offset: query.offset ?? 0,
+    };
+
+    if (query.method !== undefined) filter.method = query.method;
+
+    return this.repository.list(filter);
   }
 
   async get(id: string): Promise<Brew> {
