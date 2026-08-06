@@ -19,13 +19,13 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 0     | Foundation — monorepo, tooling, docs skeleton | **done**    | 100%     |
 | 1     | Pipeline — CI stages, branch protection       | **done**    | 100%     |
 | 2     | Schema — Drizzle + Supabase migrations        | **done**    | 100%     |
-| 3     | API — Hono, services, in-memory repository    | **next**    | 0%       |
+| 3     | API — Hono, services, in-memory repository    | in progress | 70%      |
 | 4     | UI — design system, CRUD screens              | not started | 0%       |
 | 5     | Polish — a11y, motion, states                 | not started | 0%       |
 | 6     | AI — Quick Log, Coach agent, guardrails       | not started | 0%       |
 | 7     | Ship — Vercel, docs, demo                     | not started | 0%       |
 
-**Overall: 4 of 8 phases complete.** 115 unit tests, 39 database tests and 7
+**Overall: 4 of 8 phases complete.** 228 unit tests, 79 database tests and 7
 end-to-end journeys passing, all nine CI stages green, `main` protected.
 
 ---
@@ -37,9 +37,18 @@ and lints clean on a fresh install; every change to the portfolio repository has
 to pass nine CI stages behind a protected branch; and the full Postgres schema
 exists as ordered migrations that CI applies to a real database on every push.
 
+Phase 3 is most of the way there. The persistence layer and the brew CRUD
+surface are built: `BrewRepository` as an interface, a contract suite of 27
+tests that both adapters pass, the in-memory adapter that runs v1 seeded from
+the same demo data as `seed.sql`, and the Drizzle adapter written against the
+real schema and proven against a real Postgres — while `DATA_SOURCE` still says
+`memory` and nothing connects to anything. What is left is the endpoints around
+the edges: `/api/brew-methods`, `/api/stats`, and rate limiting.
+
 The application still runs entirely on the in-memory adapter. No connection
 string, no Supabase project, nothing to provision — exactly as intended. The
-schema is ready and waiting rather than wired in.
+schema is ready and waiting rather than wired in, and now so is the code that
+would talk to it.
 
 The repository lives in two places. `main` cannot be protected on the classroom
 repository — it belongs to the `Umuzi-classroom` organisation and this account
@@ -47,16 +56,16 @@ has push access but not admin — so the enforced workflow lives on the public
 mirror at <https://github.com/TUMO-MOGAME/crema> and both remotes are kept at
 the same commit.
 
-| Check                      | Result                                                        |
-| -------------------------- | ------------------------------------------------------------- |
-| `npm run verify`           | green — format, lint, typecheck, test                         |
-| Unit and integration tests | 115 passing (46 shared, 41 backend, 28 web)                   |
-| Database tests             | 39 passing against a real Postgres 17                         |
-| End-to-end journeys        | 7 passing against production builds                           |
-| Coverage                   | shared 100%, backend 100% lines / 81% branches, web 94% / 93% |
-| Bundle                     | 86 kB js and 3 kB css gzipped, against a 250 / 40 kB budget   |
-| CI                         | all nine stages green                                         |
-| Branch protection          | direct push to `main` rejected, failing PR blocked            |
+| Check                      | Result                                                         |
+| -------------------------- | -------------------------------------------------------------- |
+| `npm run verify`           | green — format, lint, typecheck, test                          |
+| Unit and integration tests | 228 passing (46 shared, 154 backend, 28 web)                   |
+| Database tests             | 79 passing against a real Postgres 17                          |
+| End-to-end journeys        | 7 passing against production builds                            |
+| Coverage                   | shared 100%, backend 99.7% lines / 88% branches, web 94% / 93% |
+| Bundle                     | 86 kB js and 3 kB css gzipped, against a 250 / 40 kB budget    |
+| CI                         | all nine stages green                                          |
+| Branch protection          | direct push to `main` rejected, failing PR blocked             |
 
 Toolchain as resolved: Node 24.11, TypeScript 6, ESLint 10, Vitest 4, Vite 8,
 React 19.2, Hono 4.13, Zod 4.4, Playwright 1.62.
@@ -67,10 +76,10 @@ Nothing.
 
 ## Next
 
-Phase 3 — the API. `BrewRepository` as an interface with a contract test suite
-both adapters must pass, the in-memory adapter that runs v1, the Drizzle adapter
-written against the schema but left dormant, and full CRUD at `/api/brews` with
-the status codes in PLANNING section 4.4 — every row of that table tested.
+The rest of Phase 3 — `/api/brew-methods` so the filter dropdown reads its
+vocabulary from the API rather than a duplicated constant, `/api/stats` over the
+`brew_stats` view, and rate limiting on the routes that will eventually cost
+money to serve. Then Phase 4, the UI, against a contract that is now frozen.
 
 ---
 
@@ -176,16 +185,42 @@ the SQL had not.
 
 ### Phase 3 — API
 
-- [ ] Hono app factory, separated from the Node listener
-- [ ] Zod-validated env loader that fails fast
-- [ ] Error envelope, request id, structured logging
-- [ ] `BrewRepository` interface + contract test suite
-- [ ] `InMemoryBrewRepository`
-- [ ] `DrizzleBrewRepository` (written, not activated)
-- [ ] CRUD routes with the status codes in PLANNING section 4.4
-- [ ] `/api/brew-methods`, `/api/stats`, `/api/health`
-- [ ] CORS, rate limiting, security headers
-- [ ] Integration tests covering every row of the API table
+- [x] Hono app factory, separated from the Node listener
+- [x] Zod-validated env loader that fails fast
+- [x] Error envelope, request id, structured logging
+- [x] `BrewRepository` interface + contract test suite
+- [x] `InMemoryBrewRepository`
+- [x] `DrizzleBrewRepository` (written, not activated)
+- [x] CRUD routes with the status codes in PLANNING section 4.4
+- [x] `/api/health`
+- [ ] `/api/brew-methods`, `/api/stats`
+- [x] CORS, security headers
+- [ ] Rate limiting
+- [x] Integration tests covering every row of the brew table
+
+The repository layer is the part worth reading. `BrewRepository` is an interface
+with two implementations and one test suite: 27 contract tests that both
+adapters must pass, run against the in-memory store on every commit and against
+a real Postgres 17 in the Database stage. It is what makes "switch `DATA_SOURCE`
+to `postgres`" a claim with evidence rather than an intention.
+
+Three real differences surfaced only because both adapters were held to the same
+tests, and all three would have been silent until the day the environment
+variable flipped:
+
+- **Grams.** `numeric(6,2)` rounds to two decimals; a `Map` keeps whatever it is
+  given. The in-memory adapter now rounds deliberately.
+- **Timestamps.** `timestamptz` stores an instant and discards the offset it
+  arrived in. The in-memory adapter normalises to UTC on write to match, which
+  also makes its ISO strings sort chronologically as plain strings.
+- **Aliasing.** Handing back the stored object rather than a copy is invisible
+  in tests until something mutates a response — and impossible in Postgres,
+  which is exactly why the guarantee had to be written down.
+
+`PATCH` gained a `422` the API table did not have. The semantic rules were
+enforced on create and not on update, which left a rule you could walk around
+one `PATCH` at a time. PLANNING section 4.4 was corrected rather than the
+behaviour.
 
 ### Phase 4 — UI
 
@@ -268,16 +303,21 @@ the SQL had not.
 | 2026-08-06 | npm pinned to >= 11.16 with `engine-strict=true`      | 11.6 and 11.16 disagree about whether `yaml` belongs in the lockfile. The older one writes a lockfile that breaks CI, and the break lands on the runner rather than the machine that caused it                     |
 | 2026-08-06 | `verify` runs `test:coverage` rather than `test`      | Thresholds were only enforced in CI, so a coverage regression could not be caught before pushing                                                                                                                   |
 | 2026-08-06 | Drizzle schema excluded from unit coverage            | Declarations with no branching. The Database stage compares them against a live Postgres, which is a stronger check than importing the file for a line count                                                       |
+| 2026-08-06 | One contract suite, both adapters, no mocks           | A mock repository asserts that the service called the methods it currently calls. The in-memory adapter is already proven by the contract suite, so it tests behaviour instead                                     |
+| 2026-08-06 | `SEMANTIC_INVALID` (422) split from validation (400)  | A field that is wrong on its own can be highlighted; a combination that is impossible cannot. The client does different things with them, so they are different codes                                              |
+| 2026-08-06 | Malformed `:id` answers 404, not 400                  | `/api/brews/banana` names no brew, the same as a well-formed id that was never used. It also declines to tell an unauthenticated caller what a valid id looks like                                                 |
+| 2026-08-06 | Drizzle adapter excluded from unit coverage           | Same reasoning as the schema: it is covered by the contract suite against a real database. Counting it here would measure how much of it the _other_ adapter's tests happen to touch                               |
 
 ---
 
 ## Update log
 
-| Date       | Change                                                                                                                                                                                                                                                                                                                                                            |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-08-05 | Repository audited. Planning and research completed. `PLANNING.md` and `STATUS.md` created.                                                                                                                                                                                                                                                                       |
-| 2026-08-05 | All four open decisions settled. Phase 0 unblocked, awaiting go-ahead to scaffold.                                                                                                                                                                                                                                                                                |
-| 2026-08-05 | Phase 0 built and verified: workspaces, contract package, API shell, frontend shell, tooling, docs. 62 tests green, both workspaces building, API smoke-tested over the wire.                                                                                                                                                                                     |
-| 2026-08-05 | Phase 0 pushed. Public mirror created at `TUMO-MOGAME/crema`.                                                                                                                                                                                                                                                                                                     |
-| 2026-08-06 | Phase 2 built. Eight migrations, seed, Drizzle mirror, migration runner, 39 database tests and a drift guard, all verified against a real Postgres 17. CI gained a Database stage. A whitespace-handling mismatch between the SQL constraints and the Zod contract was found and fixed.                                                                           |
-| 2026-08-06 | Phase 1 built. Coverage raised to threshold with real tests for the error paths, 91 unit tests and 7 end-to-end journeys. First CI run failed on a corrupted lockfile missing `yaml` — repaired, and the catch is the argument for `npm ci`. All nine stages green. `main` protected and the gate verified against both a direct push and a failing pull request. |
+| Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-05 | Repository audited. Planning and research completed. `PLANNING.md` and `STATUS.md` created.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2026-08-05 | All four open decisions settled. Phase 0 unblocked, awaiting go-ahead to scaffold.                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2026-08-05 | Phase 0 built and verified: workspaces, contract package, API shell, frontend shell, tooling, docs. 62 tests green, both workspaces building, API smoke-tested over the wire.                                                                                                                                                                                                                                                                                                                            |
+| 2026-08-05 | Phase 0 pushed. Public mirror created at `TUMO-MOGAME/crema`.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-08-06 | Phase 2 built. Eight migrations, seed, Drizzle mirror, migration runner, 39 database tests and a drift guard, all verified against a real Postgres 17. CI gained a Database stage. A whitespace-handling mismatch between the SQL constraints and the Zod contract was found and fixed.                                                                                                                                                                                                                  |
+| 2026-08-06 | Phase 1 built. Coverage raised to threshold with real tests for the error paths, 91 unit tests and 7 end-to-end journeys. First CI run failed on a corrupted lockfile missing `yaml` — repaired, and the catch is the argument for `npm ci`. All nine stages green. `main` protected and the gate verified against both a direct push and a failing pull request.                                                                                                                                        |
+| 2026-08-06 | Phase 3 repository layer and brew CRUD built. `BrewRepository` with a 27-test contract suite both adapters pass, in-memory adapter seeded from the same data as `seed.sql` and guarded against drifting from it, Drizzle adapter written and proven against a real Postgres while staying dormant. 228 unit tests and 79 database tests. The contract suite found three silent differences between the adapters — gram rounding, timestamp offsets, and handing out the stored object instead of a copy. |
