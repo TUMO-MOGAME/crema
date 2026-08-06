@@ -5,7 +5,7 @@
     "noEmit": true,
     "declaration": false,
     "declarationMap": false,
-    "types": ["vitest/globals"]
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "*.config.ts"]
 }
