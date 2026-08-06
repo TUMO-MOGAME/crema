@@ -1,4 +1,5 @@
 import { isApiErrorBody, type ErrorCode, type FieldError } from '@crema/shared';
+import type { ZodType } from 'zod';
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
 
@@ -41,14 +42,31 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * How a caller says what it expects back.
+ *
+ * Passing a schema is what turns `apiRequest` from a cast into a check. Without
+ * one the return type is a promise the compiler believes and nothing verifies —
+ * a renamed field or a proxy answering with an HTML error page flows straight
+ * into render, and the stack trace lands somewhere far from the cause.
+ */
+interface RequestOptions extends RequestInit {
+  schema?: ZodType;
+}
+
+export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { schema, ...init } = options;
   let response: Response;
 
   try {
     response = await fetch(`${BASE_URL}${path}`, {
       ...init,
       headers: {
-        'Content-Type': 'application/json',
+        // Only when there is something to describe. Setting it unconditionally
+        // put `Content-Type: application/json` on every GET and DELETE, and
+        // that value is not CORS-safelisted — so each one paid for a preflight
+        // it had no need of.
+        ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...init.headers,
       },
     });
@@ -82,6 +100,25 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
       `The server responded with status ${response.status}.`,
       response.status,
     );
+  }
+
+  if (schema) {
+    const result = schema.safeParse(payload);
+
+    if (!result.success) {
+      // A 200 whose body is the wrong shape is a broken server, not a broken
+      // request — so it reads as an internal error rather than a validation
+      // failure, which in this app means "you typed something wrong". Failing
+      // here also means the failure names the response, instead of surfacing
+      // three components away as an undefined that cannot be read.
+      throw new ApiError(
+        'INTERNAL_ERROR',
+        'The server sent a response this app does not understand.',
+        response.status,
+      );
+    }
+
+    return result.data as T;
   }
 
   return payload as T;

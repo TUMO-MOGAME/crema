@@ -30,9 +30,18 @@ export function DeleteConfirmDialog({
   return (
     <Dialog open={brew !== null} onClose={onCancel} title="Delete this brew?">
       <div className="flex flex-col gap-6">
+        {/*
+          "Cannot be undone from here", not "cannot be undone".
+
+          The row is soft-deleted — `deleted_at` is set and the record survives,
+          which is what keeps an accidental deletion recoverable and gives the
+          AI suggestion trail something to point at. The old wording was true
+          about the interface and false about the data, and the difference
+          matters to whoever has to answer "is it really gone".
+        */}
         <p className="text-body text-ink">
           <span className="text-ink-strong font-semibold">{brew?.beans}</span> and its notes will be
-          removed from your log. This cannot be undone.
+          removed from your log. You cannot undo this from the app.
         </p>
 
         <div className="flex items-center justify-end gap-3">
