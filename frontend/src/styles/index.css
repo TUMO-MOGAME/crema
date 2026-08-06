@@ -1,48 +1,235 @@
 @import 'tailwindcss';
 
 /**
- * Base tokens only. The full design system — component recipes, elevation,
- * motion — arrives with the UI work in Phase 4. What is here is the palette
- * everything else will be built from.
+ * The design system.
  *
- * The palette is warm and low-contrast-dark on purpose: a brew log is read in
- * a kitchen at 6am, not in an office.
+ * Three layers, in this order, and components only ever touch the third:
+ *
+ *   1. The palette — raw ramps. Never used directly in a component.
+ *   2. The themes  — semantic variables that flip for light and dark.
+ *   3. The tokens  — utilities built on the semantic variables.
+ *
+ * The point of the middle layer is that `bg-surface` means "the page" in both
+ * themes, so a component written once is correct in both. A component reaching
+ * for `bg-bean-950` would be right in the dark and invisible in the light, and
+ * that is exactly the drift that makes a theme toggle a two-week project later.
+ *
+ * The palette is warm and the dark theme is the default on purpose: a brew log
+ * is read in a kitchen at 6am, not in an office.
  */
+
+/* ── 1. Palette ─────────────────────────────────────────────────────────── */
+
 @theme {
   --color-bean-50: oklch(0.97 0.01 70);
   --color-bean-100: oklch(0.93 0.02 68);
   --color-bean-200: oklch(0.85 0.03 65);
+  --color-bean-300: oklch(0.74 0.04 60);
   --color-bean-400: oklch(0.62 0.06 55);
+  --color-bean-500: oklch(0.53 0.06 52);
   --color-bean-600: oklch(0.44 0.06 48);
+  --color-bean-700: oklch(0.35 0.05 46);
   --color-bean-800: oklch(0.27 0.04 45);
   --color-bean-900: oklch(0.19 0.03 44);
   --color-bean-950: oklch(0.14 0.02 43);
 
   /* Crema itself — the one accent, used sparingly. */
+  --color-crema-300: oklch(0.88 0.09 78);
   --color-crema-400: oklch(0.82 0.13 75);
   --color-crema-500: oklch(0.75 0.15 70);
+  --color-crema-600: oklch(0.64 0.14 66);
+  --color-crema-700: oklch(0.52 0.12 62);
 
-  --font-sans: 'Inter var', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /**
+   * The one place a warning has to read as a warning.
+   *
+   * Deep rather than bright: a pink-leaning red on a warm dark page reads as
+   * decoration, and the only control wearing it deletes things.
+   */
+  --color-ember-400: oklch(0.58 0.2 27);
+  --color-ember-600: oklch(0.5 0.21 27);
+
+  /**
+   * Typography.
+   *
+   * No webfont. The `Inter var` the tokens used to name was never actually
+   * loaded, so every screen has been rendering in the system UI face all along
+   * — naming a font you do not ship is a lie the CSS tells. The stack below is
+   * what browsers really use, listed honestly, and the personality comes from
+   * how it is set rather than from which file is downloaded: the display sizes
+   * are tight and heavy, the measurements are tabular, and the caps are tracked
+   * out. Adding a variable display face later is one `@font-face` and one line
+   * of `--font-display`.
+   */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-display:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI Variable Display', 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+
+  /**
+   * A five-step scale, not Tailwind's twelve. A log has a title, a row title,
+   * body copy, a measurement and a label — anything more is indecision.
+   */
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1rem;
+  --text-small: 0.8125rem;
+  --text-small--line-height: 1.125rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-row: 1.125rem;
+  --text-row--line-height: 1.5rem;
+  --text-display: clamp(2.25rem, 1.6rem + 3.2vw, 3.25rem);
+  --text-display--line-height: 1.05;
 
   --radius-card: 1rem;
+  --radius-pill: 999px;
+
+  /* One duration and one curve, so nothing in the app moves at its own speed. */
+  --ease-out-quiet: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-quiet: 220ms;
 }
+
+/* ── 2. Themes ──────────────────────────────────────────────────────────── */
 
 @layer base {
   :root {
-    color-scheme: dark light;
+    color-scheme: dark;
+
+    --ui-surface: var(--color-bean-950);
+    --ui-raised: var(--color-bean-900);
+    --ui-sunken: oklch(0.11 0.02 43);
+    --ui-hairline: var(--color-bean-800);
+    --ui-ink: var(--color-bean-100);
+    --ui-ink-strong: var(--color-bean-50);
+    --ui-ink-muted: var(--color-bean-400);
+    --ui-accent: var(--color-crema-400);
+    --ui-accent-ink: var(--color-bean-950);
+    --ui-danger: var(--color-ember-400);
+    /* Light on the red in both themes — the wireframe's Delete button, and the
+       only pairing that keeps contrast once the red is deep enough to be read
+       as a warning rather than as an accent. */
+    --ui-danger-ink: var(--color-bean-50);
+
+    /**
+     * Rating, as extraction rather than as a traffic light.
+     *
+     * A brew is not good or bad the way a build is passing or failing, and
+     * red-amber-green would be both the obvious answer and the one that fails
+     * anyone who cannot separate red from green. This runs the scale through
+     * the drink instead: a 1 is pale, thin and ashy, a 5 is full crema. Chroma
+     * and lightness both climb, so the ramp survives greyscale — and the badge
+     * carries the number and a proportional arc as well, so colour is never
+     * the only thing saying it.
+     */
+    --ui-extraction-1: oklch(0.55 0.02 60);
+    --ui-extraction-2: oklch(0.61 0.06 64);
+    --ui-extraction-3: oklch(0.69 0.1 68);
+    --ui-extraction-4: oklch(0.76 0.13 71);
+    --ui-extraction-5: oklch(0.83 0.16 74);
   }
 
+  /* System preference, unless the reader has chosen for themselves. */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) {
+      color-scheme: light;
+
+      --ui-surface: var(--color-bean-50);
+      --ui-raised: oklch(1 0 0);
+      --ui-sunken: var(--color-bean-100);
+      --ui-hairline: var(--color-bean-200);
+      --ui-ink: var(--color-bean-900);
+      --ui-ink-strong: var(--color-bean-950);
+      --ui-ink-muted: var(--color-bean-500);
+      --ui-accent: var(--color-crema-700);
+      --ui-accent-ink: var(--color-bean-50);
+      --ui-danger: var(--color-ember-600);
+      --ui-danger-ink: var(--color-bean-50);
+
+      /* Darkened so the ramp keeps its contrast against a pale page. */
+      --ui-extraction-1: oklch(0.68 0.02 60);
+      --ui-extraction-2: oklch(0.63 0.07 64);
+      --ui-extraction-3: oklch(0.58 0.11 66);
+      --ui-extraction-4: oklch(0.53 0.13 64);
+      --ui-extraction-5: oklch(0.47 0.14 62);
+    }
+  }
+
+  /* An explicit choice wins over the system, in both directions. */
+  :root[data-theme='light'] {
+    color-scheme: light;
+
+    --ui-surface: var(--color-bean-50);
+    --ui-raised: oklch(1 0 0);
+    --ui-sunken: var(--color-bean-100);
+    --ui-hairline: var(--color-bean-200);
+    --ui-ink: var(--color-bean-900);
+    --ui-ink-strong: var(--color-bean-950);
+    --ui-ink-muted: var(--color-bean-500);
+    --ui-accent: var(--color-crema-700);
+    --ui-accent-ink: var(--color-bean-50);
+    --ui-danger: var(--color-ember-600);
+    --ui-danger-ink: var(--color-bean-50);
+
+    --ui-extraction-1: oklch(0.68 0.02 60);
+    --ui-extraction-2: oklch(0.63 0.07 64);
+    --ui-extraction-3: oklch(0.58 0.11 66);
+    --ui-extraction-4: oklch(0.53 0.13 64);
+    --ui-extraction-5: oklch(0.47 0.14 62);
+  }
+}
+
+/* ── 3. Tokens ──────────────────────────────────────────────────────────── */
+
+/**
+ * `inline` matters here: without it Tailwind copies the value it sees at build
+ * time into the utility, and every theme would be frozen to whichever one was
+ * declared first. With it the utility emits `var(--ui-surface)` and the theme
+ * is resolved in the browser, which is the whole point.
+ */
+@theme inline {
+  --color-surface: var(--ui-surface);
+  --color-raised: var(--ui-raised);
+  --color-sunken: var(--ui-sunken);
+  --color-hairline: var(--ui-hairline);
+  --color-ink: var(--ui-ink);
+  --color-ink-strong: var(--ui-ink-strong);
+  --color-ink-muted: var(--ui-ink-muted);
+  --color-accent: var(--ui-accent);
+  --color-accent-ink: var(--ui-accent-ink);
+  --color-danger: var(--ui-danger);
+  --color-danger-ink: var(--ui-danger-ink);
+}
+
+@layer base {
   html {
     -webkit-text-size-adjust: 100%;
   }
 
   body {
-    @apply bg-bean-950 text-bean-100 font-sans antialiased;
+    @apply bg-surface text-ink font-sans antialiased;
+  }
+
+  /**
+   * Measurements are data, and data wants to line up. Tabular figures stop the
+   * gram counts jittering as they change, which matters most in the one place
+   * a number changes under you: the row you just edited.
+   */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
   }
 
   /* Never remove focus rings — replace them with better ones. */
   :focus-visible {
-    @apply outline-crema-500 outline-2 outline-offset-2;
+    @apply outline-accent outline-2 outline-offset-2;
+  }
+
+  /* The dialog element brings its own backdrop; this is the only styling it needs. */
+  dialog::backdrop {
+    background: oklch(0.14 0.02 43 / 0.72);
+    backdrop-filter: blur(2px);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -54,5 +241,59 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+@layer utilities {
+  /**
+   * The list settling on first paint: rows rise in sequence and each rating
+   * dial sweeps to its value, the way a scale needle does. One orchestrated
+   * moment on load rather than effects scattered through the page — and it
+   * plays once, because a log is somewhere you return to, not a landing page.
+   */
+  @keyframes row-settle {
+    from {
+      opacity: 0;
+      transform: translateY(0.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .animate-row-settle {
+    animation: row-settle var(--duration-quiet) var(--ease-out-quiet) backwards;
+  }
+
+  /**
+   * The dial sweeps from empty to its value. `--dial-circumference` is the
+   * full arc length, so the keyframe can start from "nothing drawn" without
+   * knowing the rating — the end state is already on the element.
+   */
+  @keyframes dial-sweep {
+    from {
+      stroke-dashoffset: var(--dial-circumference);
+    }
+  }
+
+  .animate-dial-sweep {
+    --dial-circumference: 131.95;
+    animation: dial-sweep var(--duration-quiet) var(--ease-out-quiet) backwards;
+  }
+
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(1rem) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .animate-dialog-in {
+    animation: dialog-in var(--duration-quiet) var(--ease-out-quiet);
   }
 }
