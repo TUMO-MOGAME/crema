@@ -1,6 +1,10 @@
 -- The core table.
 --
--- Every numeric limit below matches BREW_LIMITS in shared/src/brew.ts exactly.
+-- Every numeric limit below is meant to match BREW_LIMITS in shared/src/brew.ts
+-- exactly. Two did not: the gram floors were written as `> 0` where BREW_LIMITS
+-- says 0.1 and 1. That is corrected in 0008_align_brew_limits.sql — this file
+-- cannot be edited, because it has been applied.
+--
 -- The API rejects bad input long before it reaches Postgres, so these
 -- constraints are not the primary defence — they are what holds when input
 -- arrives from somewhere the API does not control: a migration, a manual fix,
