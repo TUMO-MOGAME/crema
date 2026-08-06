@@ -190,16 +190,23 @@ jobs:
       # Asserts success, in a step that always runs.
       #
       # This was a `contains(needs.*.result, 'failure')` guard on an `if:`, and
-      # it let a red stage through twice while reporting all nine green — with
-      # Lint and format failing during setup, unable to resolve its actions
-      # during a GitHub incident. Whatever that job's result reads as, the
-      # expression did not match it, and a gate that depends on enumerating
-      # every way a stage can go wrong will keep meeting new ones.
+      # it reported all nine stages green with a red stage beside it. The cause
+      # turned out to be a result value the documentation does not list:
       #
-      # So the check runs unconditionally and demands the one outcome that is
-      # acceptable. It prints what it saw first, because the previous version's
-      # worst quality was that it failed silently and invisibly — there was
-      # nothing in the log to explain why it had passed.
+      #     Stage results: abandoned success success success abandoned ...
+      #
+      # `abandoned` is what a job reports when it dies at the infrastructure
+      # level — here, unable to resolve its actions during a GitHub incident.
+      # It is neither 'failure' nor 'cancelled' nor 'skipped', so every guard
+      # written against the documented set let it through, and the single
+      # context branch protection requires went green.
+      #
+      # The lesson is not "add 'abandoned' to the list". It is that a gate which
+      # enumerates the ways a stage can go wrong will keep meeting new ones. So
+      # the check runs unconditionally and demands the one outcome that is
+      # acceptable, and prints what it saw before deciding — the old version's
+      # worst quality was not being wrong, it was leaving nothing in the log to
+      # explain why it had passed.
       - name: Require every stage to have succeeded
         run: |
           results="${{ join(needs.*.result, ' ') }}"
