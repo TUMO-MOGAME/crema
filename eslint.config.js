@@ -87,8 +87,10 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
 
+  // `*.contract.ts` files export a test suite rather than being one — they are
+  // test code by any other measure, so they get the same relaxations.
   {
-    files: ['**/*.test.{ts,tsx}', '**/test/**/*.{ts,tsx}', 'e2e/**/*.ts'],
+    files: ['**/*.test.{ts,tsx}', '**/*.contract.ts', '**/test/**/*.{ts,tsx}', 'e2e/**/*.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',

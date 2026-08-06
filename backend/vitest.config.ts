@@ -21,6 +21,14 @@ export default defineConfig({
         // Postgres and compares the result against these declarations, which is
         // a far stronger check than a unit test that merely imports the file.
         'src/db/schema.ts',
+        // The Postgres adapter and its connection factory, for the same reason.
+        // Both are covered — by `drizzle-brew.repository.db.test.ts`, running
+        // the shared repository contract against a real database in the
+        // Database stage. Counting them here would measure how much of an
+        // adapter the *other* adapter's tests happen to touch, which is not a
+        // number worth having.
+        'src/db/client.ts',
+        'src/repositories/drizzle-brew.repository.ts',
       ],
       thresholds: {
         lines: 80,
