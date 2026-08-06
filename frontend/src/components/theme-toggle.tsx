@@ -37,7 +37,7 @@ export function ThemeToggle() {
       type="button"
       onClick={change}
       title={`Theme: ${LABELS[theme]}. Switch to ${LABELS[nextTheme(theme)]}.`}
-      className="border-hairline text-ink-muted hover:text-ink hover:bg-sunken text-small flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 transition-colors"
+      className="border-control-edge text-ink-muted hover:text-ink hover:bg-sunken text-small flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 transition-colors"
     >
       <span aria-hidden="true">{ICONS[theme]}</span>
       <span className="sr-only">Theme: </span>

@@ -39,7 +39,16 @@ export function Field({ label, error, children }: FieldProps) {
         'aria-describedby': error ? errorId : undefined,
       })}
 
-      <p id={errorId} className="text-small text-danger min-h-[1.125rem]" aria-live="polite">
+      {/*
+        Described by, not announced.
+
+        This used to be an `aria-live` region *and* the `aria-describedby`
+        target, so a message was read once when it appeared and again when the
+        field took focus. Validation here is `onTouched` — the error arrives as
+        focus leaves the field and the reader is already moving — so the
+        description is the useful half and the announcement was the repeat.
+      */}
+      <p id={errorId} className="text-small text-danger min-h-[1.125rem]">
         {error}
       </p>
     </div>
@@ -48,4 +57,4 @@ export function Field({ label, error, children }: FieldProps) {
 
 /** Shared control styling, so an input and a select cannot drift apart. */
 export const CONTROL_CLASS =
-  'bg-surface border-hairline text-ink placeholder:text-ink-muted w-full rounded-xl border px-4 py-2.5 text-body transition-colors aria-[invalid=true]:border-danger';
+  'bg-surface border-control-edge text-ink placeholder:text-ink-muted w-full rounded-xl border px-4 py-2.5 text-body transition-colors aria-[invalid=true]:border-danger';
