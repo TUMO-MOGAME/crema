@@ -187,10 +187,22 @@ jobs:
     needs: [lint, typecheck, unit, api, database, security, build, e2e]
     runs-on: ubuntu-latest
     steps:
-      - name: Fail if any stage did not succeed
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+      # Asserts success rather than listing the ways a stage can fail.
+      #
+      # It used to check for 'failure' and 'cancelled', which let a third
+      # outcome through: a job that never starts — a runner that cannot resolve
+      # its actions, an infrastructure outage, a condition that skips it —
+      # reports 'skipped', and the gate went green with a red stage beside it.
+      # That was observed, not theorised: Lint and format failed during setup
+      # while CI reported all nine green, which is the one failure mode a single
+      # required check must not have.
+      #
+      # Enumerating bad outcomes means the next new one is also missed. Requiring
+      # 'success' from every stage cannot be.
+      - name: Fail unless every stage succeeded
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
         run: |
-          echo "One or more stages failed. See the jobs above."
+          echo "A stage did not succeed. Results: ${{ join(needs.*.result, ', ') }}"
           exit 1
       - name: All stages passed
         run: echo "All nine stages green."
