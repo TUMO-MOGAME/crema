@@ -10,6 +10,7 @@ export const ERROR_CODES = [
   'SEMANTIC_INVALID',
   'NOT_FOUND',
   'METHOD_NOT_ALLOWED',
+  'PAYLOAD_TOO_LARGE',
   'RATE_LIMITED',
   'AI_UNAVAILABLE',
   'AI_PARSE_FAILED',
@@ -48,6 +49,12 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   SEMANTIC_INVALID: 422,
   NOT_FOUND: 404,
   METHOD_NOT_ALLOWED: 405,
+  /**
+   * The body was refused before it was read, so nothing about its contents is
+   * known — which is why this is not a validation failure with a field to
+   * blame. It is a statement about size alone.
+   */
+  PAYLOAD_TOO_LARGE: 413,
   RATE_LIMITED: 429,
   AI_UNAVAILABLE: 503,
   AI_PARSE_FAILED: 422,

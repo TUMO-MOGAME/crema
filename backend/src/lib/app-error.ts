@@ -45,6 +45,19 @@ export class AppError extends Error {
     return new AppError('SEMANTIC_INVALID', message, details);
   }
 
+  /**
+   * The request body exceeded what the API will read.
+   *
+   * The limit is named in the message because a caller that hit it needs to
+   * know what to aim under, and there is nothing sensitive about the number.
+   */
+  static payloadTooLarge(maxBytes: number): AppError {
+    return new AppError(
+      'PAYLOAD_TOO_LARGE',
+      `The request body is too large. The limit is ${Math.floor(maxBytes / 1024)} KB.`,
+    );
+  }
+
   static rateLimited(retryAfterSeconds: number): AppError {
     const error = new AppError(
       'RATE_LIMITED',
