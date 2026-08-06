@@ -147,13 +147,15 @@ treated as public by definition.
 Nine CI stages run on every push and pull request. Eight in parallel, plus an
 aggregate check that branch protection points at:
 
-lint and format · typecheck · unit tests · API tests · migration lint · security
-· build · end-to-end · **CI**
+lint and format · typecheck · unit tests · API tests · database · security ·
+build · end-to-end · **CI**
 
-Coverage thresholds are enforced at 80% lines and 75% branches. `gitleaks` scans
-the **full git history** rather than the diff, so a secret committed and later
-deleted still fails the build. The bundle has a gzip size budget. Details in
-[Documentation.md](./Documentation.md#10-the-pipeline).
+The database stage applies every migration to a real Postgres 17, seeds it, then
+proves the constraints reject what they claim to and that the Drizzle schema has
+not drifted from the SQL. Coverage thresholds are enforced at 80% lines and 75%
+branches. `gitleaks` scans the **full git history** rather than the diff, so a
+secret committed and later deleted still fails the build. The bundle has a gzip
+size budget. Details in [Documentation.md](./Documentation.md#10-the-pipeline).
 
 ## Meeting the brief
 

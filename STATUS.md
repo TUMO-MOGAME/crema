@@ -18,23 +18,28 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | —     | Planning and research                         | **done**    | 100%     |
 | 0     | Foundation — monorepo, tooling, docs skeleton | **done**    | 100%     |
 | 1     | Pipeline — CI stages, branch protection       | **done**    | 100%     |
-| 2     | Schema — Drizzle + Supabase migrations        | **next**    | 0%       |
-| 3     | API — Hono, services, in-memory repository    | not started | 0%       |
+| 2     | Schema — Drizzle + Supabase migrations        | **done**    | 100%     |
+| 3     | API — Hono, services, in-memory repository    | **next**    | 0%       |
 | 4     | UI — design system, CRUD screens              | not started | 0%       |
 | 5     | Polish — a11y, motion, states                 | not started | 0%       |
 | 6     | AI — Quick Log, Coach agent, guardrails       | not started | 0%       |
 | 7     | Ship — Vercel, docs, demo                     | not started | 0%       |
 
-**Overall: 3 of 8 phases complete.** 91 unit and integration tests plus 7
+**Overall: 4 of 8 phases complete.** 96 unit tests, 39 database tests and 7
 end-to-end journeys passing, all nine CI stages green, `main` protected.
 
 ---
 
 ## Now
 
-Phases 0 and 1 are complete and verified. The monorepo runs, builds, tests and
-lints clean on a fresh install, and every change to the portfolio repository now
-has to pass nine CI stages behind a protected branch.
+Phases 0, 1 and 2 are complete and verified. The monorepo runs, builds, tests
+and lints clean on a fresh install; every change to the portfolio repository has
+to pass nine CI stages behind a protected branch; and the full Postgres schema
+exists as ordered migrations that CI applies to a real database on every push.
+
+The application still runs entirely on the in-memory adapter. No connection
+string, no Supabase project, nothing to provision — exactly as intended. The
+schema is ready and waiting rather than wired in.
 
 The repository lives in two places. `main` cannot be protected on the classroom
 repository — it belongs to the `Umuzi-classroom` organisation and this account
@@ -45,7 +50,8 @@ the same commit.
 | Check                      | Result                                                      |
 | -------------------------- | ----------------------------------------------------------- |
 | `npm run verify`           | green — format, lint, typecheck, test                       |
-| Unit and integration tests | 91 passing (27 shared, 36 backend, 28 web)                  |
+| Unit and integration tests | 96 passing (27 shared, 41 backend, 28 web)                  |
+| Database tests             | 39 passing against a real Postgres 17                       |
 | End-to-end journeys        | 7 passing against production builds                         |
 | Coverage                   | backend 100% lines / 81% branches, web 94% / 93%            |
 | Bundle                     | 86 kB js and 3 kB css gzipped, against a 250 / 40 kB budget |
@@ -61,11 +67,10 @@ Nothing.
 
 ## Next
 
-Phase 2 — the schema. Drizzle definitions for every table, the eight migrations
-from `0000_extensions` through `0007_rls` written and hand-reviewed, seed data,
-the generated `brew_ratio` column, row level security on every table, and an ER
-diagram in `docs/architecture.md`. The migration linter is already in the
-pipeline waiting for them.
+Phase 3 — the API. `BrewRepository` as an interface with a contract test suite
+both adapters must pass, the in-memory adapter that runs v1, the Drizzle adapter
+written against the schema but left dormant, and full CRUD at `/api/brews` with
+the status codes in PLANNING section 4.4 — every row of that table tested.
 
 ---
 
@@ -141,16 +146,33 @@ Built beyond the minimum, because the rest of the work leans on it:
 The aggregate `CI` job is the single required status check, so adding or
 renaming a stage never means editing the protection rule.
 
-### Phase 2 — Schema
+### Phase 2 — Schema — done
 
-- [ ] Drizzle schema for every table
-- [ ] `0000_extensions` through `0007_rls` written and hand-reviewed
-- [ ] `seed.sql` with brew methods and demo brews
-- [ ] Constraints, indexes, `updated_at` triggers
-- [ ] `brew_ratio` generated column
-- [ ] RLS enabled with owner-scoped policies on every table
-- [ ] Migrations applied against a scratch Postgres in CI
-- [ ] `docs/architecture.md` with an ER diagram
+- [x] Drizzle schema for every table, mirroring the SQL structure
+- [x] `0000_foundation` through `0007_rls` written and hand-reviewed
+- [x] `seed.sql` — the three wireframe brews plus a V60 ratio ladder, so the
+      coach has history worth reasoning about
+- [x] Constraints, indexes, partial index over live rows, `updated_at` triggers
+- [x] `brew_ratio` generated column, which Postgres refuses to let anything
+      write
+- [x] RLS enabled with owner-scoped policies on every table
+- [x] `auth.uid()` compatibility shim, so the same migrations apply unchanged to
+      Supabase and to plain Postgres
+- [x] `brew_stats` and `brew_stats_by_method` views, both `security_invoker`
+- [x] Migration runner (`scripts/apply-migrations.mjs`) for CI and local use
+- [x] Migrations applied against a real Postgres 17 in CI, then seeded
+- [x] Drift guard — Drizzle declarations compared against `information_schema`
+- [x] 39 database tests: every constraint proven to reject what it claims to
+- [x] Vocabulary sync test — the migration and `BREW_METHOD_SLUGS` cannot
+      disagree
+- [x] `docs/architecture.md` with system, ER and request-lifecycle diagrams
+
+Found while building it: `length(btrim(x)) > 0` was the wrong way to express
+"not blank". `btrim` strips spaces only, so a single tab passed the constraint
+while failing the Zod `.trim().min(1)` on the same field — the database and the
+contract disagreed about what blank means. Now written as `x ~ '[^[:space:]]'`
+on every text column that must not be empty. The test suite found it; reading
+the SQL had not.
 
 ### Phase 3 — API
 
@@ -218,25 +240,31 @@ renaming a stage never means editing the protection rule.
 
 ## Decision log
 
-| Date       | Decision                                              | Reason                                                                                                                            |
-| ---------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-08-05 | Monorepo with npm workspaces                          | Brief requires separate `frontend/` and `backend/` folders; workspaces add a shared contract package with no extra tooling        |
-| 2026-08-05 | Repository pattern with swappable adapters            | Meets "full schema, no live database yet" without leaving the app half-built                                                      |
-| 2026-08-05 | Drizzle over Prisma                                   | Emits reviewable SQL that doubles as the Supabase migration files                                                                 |
-| 2026-08-05 | AI is Phase 6, after the brief is fully satisfied     | The graded requirements ship complete regardless of how the AI work lands                                                         |
-| 2026-08-05 | Human-in-the-loop for every AI write                  | The agent proposes; the user saves. Stated openly as a design position                                                            |
-| 2026-08-05 | Backend: Hono                                         | Web-standard, typed, no Vercel adapter needed, tests without binding a port                                                       |
-| 2026-08-05 | Frontend: Vite + React 19                             | A standalone SPA over real HTTP proves the API is genuine; Next.js would blur the split the brief asks for                        |
-| 2026-08-05 | All three AI features in v1                           | Phase ordering contains the risk; the differentiation is the point                                                                |
-| 2026-08-05 | No custom domain                                      | `*.vercel.app` satisfies the brief; a domain can be attached later at zero code cost                                              |
-| 2026-08-05 | `shared/` ships TypeScript source, no build step      | Both consumers are bundlers (Vite, tsup, Vercel). A build step would add a stale-artifact failure mode for no gain                |
-| 2026-08-05 | tsup for the backend build                            | Bundles the workspace package into one file; plain `tsc` cannot emit across a package boundary that exports source                |
-| 2026-08-05 | Public mirror at `TUMO-MOGAME/crema`                  | The classroom repo is org-owned and private, so `main` cannot be protected there and nobody outside the bootcamp can see the work |
-| 2026-08-05 | One aggregate `CI` check, not eight required contexts | Branch protection points at a single name, so adding or renaming a stage never means editing the rule                             |
-| 2026-08-05 | `gitleaks` binary instead of the marketplace action   | The action requires a paid licence for organisation-owned repositories                                                            |
-| 2026-08-05 | Rebase merge preferred over squash                    | Keeps the granular commits, which are part of what a reader of a portfolio repo is judging                                        |
-| 2026-08-05 | Zero required approvals, but a PR still required      | A solo repository cannot self-approve; requiring one review would block every merge permanently                                   |
-| 2026-08-05 | Coverage thresholds configured but not in `verify`    | `verify` must stay fast enough to run constantly. CI runs the coverage job separately from Phase 3                                |
+| Date       | Decision                                              | Reason                                                                                                                                                                                                             |
+| ---------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-08-05 | Monorepo with npm workspaces                          | Brief requires separate `frontend/` and `backend/` folders; workspaces add a shared contract package with no extra tooling                                                                                         |
+| 2026-08-05 | Repository pattern with swappable adapters            | Meets "full schema, no live database yet" without leaving the app half-built                                                                                                                                       |
+| 2026-08-05 | Drizzle over Prisma                                   | Emits reviewable SQL that doubles as the Supabase migration files                                                                                                                                                  |
+| 2026-08-05 | AI is Phase 6, after the brief is fully satisfied     | The graded requirements ship complete regardless of how the AI work lands                                                                                                                                          |
+| 2026-08-05 | Human-in-the-loop for every AI write                  | The agent proposes; the user saves. Stated openly as a design position                                                                                                                                             |
+| 2026-08-05 | Backend: Hono                                         | Web-standard, typed, no Vercel adapter needed, tests without binding a port                                                                                                                                        |
+| 2026-08-05 | Frontend: Vite + React 19                             | A standalone SPA over real HTTP proves the API is genuine; Next.js would blur the split the brief asks for                                                                                                         |
+| 2026-08-05 | All three AI features in v1                           | Phase ordering contains the risk; the differentiation is the point                                                                                                                                                 |
+| 2026-08-05 | No custom domain                                      | `*.vercel.app` satisfies the brief; a domain can be attached later at zero code cost                                                                                                                               |
+| 2026-08-05 | `shared/` ships TypeScript source, no build step      | Both consumers are bundlers (Vite, tsup, Vercel). A build step would add a stale-artifact failure mode for no gain                                                                                                 |
+| 2026-08-05 | tsup for the backend build                            | Bundles the workspace package into one file; plain `tsc` cannot emit across a package boundary that exports source                                                                                                 |
+| 2026-08-05 | Public mirror at `TUMO-MOGAME/crema`                  | The classroom repo is org-owned and private, so `main` cannot be protected there and nobody outside the bootcamp can see the work                                                                                  |
+| 2026-08-05 | One aggregate `CI` check, not eight required contexts | Branch protection points at a single name, so adding or renaming a stage never means editing the rule                                                                                                              |
+| 2026-08-05 | `gitleaks` binary instead of the marketplace action   | The action requires a paid licence for organisation-owned repositories                                                                                                                                             |
+| 2026-08-05 | Rebase merge preferred over squash                    | Keeps the granular commits, which are part of what a reader of a portfolio repo is judging                                                                                                                         |
+| 2026-08-05 | Zero required approvals, but a PR still required      | A solo repository cannot self-approve; requiring one review would block every merge permanently                                                                                                                    |
+| 2026-08-05 | Coverage thresholds configured but not in `verify`    | `verify` must stay fast enough to run constantly. CI runs the coverage job separately from Phase 3                                                                                                                 |
+| 2026-08-06 | SQL hand-authored; Drizzle mirrors its structure      | `drizzle-kit` emits none of what matters here — RLS, triggers, `security_invoker` views, comments, partial indexes — and pulls deprecated packages carrying four moderate advisories. A CI drift guard replaces it |
+| 2026-08-06 | Reference data in migrations, demo data in `seed.sql` | `brews.method_id` points at the methods, so they are schema contract rather than sample content                                                                                                                    |
+| 2026-08-06 | Soft delete on `brews`                                | Recoverable, and the AI suggestion audit trail keeps its foreign key target                                                                                                                                        |
+| 2026-08-06 | `brew_ratio` as a generated column                    | A denormalisation that earns it: every list row and every coach question compares ratios, and Postgres will not let it drift from its inputs                                                                       |
+| 2026-08-06 | RLS enabled before it is load-bearing                 | Today the API bypasses it. The day anything connects with an anon key, a table without RLS is world-readable and the failure is silent                                                                             |
+| 2026-08-06 | Database folded into the migration CI stage           | Keeps the count at nine while making one job own the database concern end to end                                                                                                                                   |
 
 ---
 
@@ -248,4 +276,5 @@ renaming a stage never means editing the protection rule.
 | 2026-08-05 | All four open decisions settled. Phase 0 unblocked, awaiting go-ahead to scaffold.                                                                                                                                                                                                                                                                                |
 | 2026-08-05 | Phase 0 built and verified: workspaces, contract package, API shell, frontend shell, tooling, docs. 62 tests green, both workspaces building, API smoke-tested over the wire.                                                                                                                                                                                     |
 | 2026-08-05 | Phase 0 pushed. Public mirror created at `TUMO-MOGAME/crema`.                                                                                                                                                                                                                                                                                                     |
+| 2026-08-06 | Phase 2 built. Eight migrations, seed, Drizzle mirror, migration runner, 39 database tests and a drift guard, all verified against a real Postgres 17. CI gained a Database stage. A whitespace-handling mismatch between the SQL constraints and the Zod contract was found and fixed.                                                                           |
 | 2026-08-06 | Phase 1 built. Coverage raised to threshold with real tests for the error paths, 91 unit tests and 7 end-to-end journeys. First CI run failed on a corrupted lockfile missing `yaml` — repaired, and the catch is the argument for `npm ci`. All nine stages green. `main` protected and the gate verified against both a direct push and a failing pull request. |
