@@ -1,6 +1,6 @@
-import { isApiErrorBody } from '@crema/shared';
+import { isApiErrorBody, type ApiErrorBody } from '@crema/shared';
 import { describe, expect, it } from 'vitest';
-import { createApp } from './app';
+import { createApp, MAX_BODY_BYTES } from './app';
 
 const app = createApp();
 
@@ -84,5 +84,78 @@ describe('cors', () => {
     expect(res.headers.get('access-control-allow-origin')).not.toBe(
       'https://not-our-frontend.example',
     );
+  });
+});
+
+/**
+ * The body limit, and why it is not a validation rule.
+ *
+ * Zod runs after the body has been parsed, so `beans` being capped at 120
+ * characters said nothing about a caller who sends two hundred megabytes — the
+ * whole thing is in memory before a schema sees it. On routes that require no
+ * authentication that is a denial of service costing one request.
+ */
+describe('request body size', () => {
+  const brew = {
+    beans: 'Ethiopian Yirgacheffe',
+    method: 'v60',
+    coffeeGrams: 18,
+    waterGrams: 288,
+    rating: 5,
+    tastingNotes: 'Blackcurrant, jasmine, tea-like and clean',
+  };
+
+  async function post(body: string): Promise<Response> {
+    return await app.request('/api/brews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  }
+
+  it('refuses a body past the limit with 413', async () => {
+    const oversized = JSON.stringify({ ...brew, tastingNotes: 'x'.repeat(MAX_BODY_BYTES) });
+
+    const response = await post(oversized);
+
+    expect(response.status).toBe(413);
+  });
+
+  it('uses the shared error envelope for it', async () => {
+    const response = await post(JSON.stringify({ ...brew, beans: 'x'.repeat(MAX_BODY_BYTES) }));
+    const body: unknown = await response.json();
+
+    expect(isApiErrorBody(body)).toBe(true);
+    expect((body as ApiErrorBody).error.code).toBe('PAYLOAD_TOO_LARGE');
+  });
+
+  it('names a limit the caller can aim under', async () => {
+    const response = await post(JSON.stringify({ ...brew, beans: 'x'.repeat(MAX_BODY_BYTES) }));
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(body.error.message).toContain('16 KB');
+  });
+
+  it('lets a real brew through untouched', async () => {
+    // The largest brew the schema accepts is nowhere near the ceiling.
+    const response = await post(
+      JSON.stringify({ ...brew, beans: 'x'.repeat(120), tastingNotes: 'y'.repeat(500) }),
+    );
+
+    expect(response.status).toBe(201);
+  });
+});
+
+describe('content security policy', () => {
+  it('is set, because Hono\u2019s defaults do not set one', async () => {
+    const res = await app.request('/api/health');
+
+    expect(res.headers.get('content-security-policy')).toContain("default-src 'none'");
+  });
+
+  it('forbids this JSON API from being framed', async () => {
+    const res = await app.request('/api/health');
+
+    expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
   });
 });

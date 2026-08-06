@@ -2,7 +2,6 @@ import type { ApiErrorBody } from '@crema/shared';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { AppError } from '../lib/app-error';
-import { env } from '../config/env';
 
 function body(
   code: ApiErrorBody['error']['code'],
@@ -35,6 +34,13 @@ export function errorHandler(error: Error, c: Context): Response {
     return response;
   }
 
+  // The stack goes to the log in every environment, including production.
+  //
+  // This used to be withheld there, which confused two different things: a
+  // stack trace in an HTTP *response* is an information leak, and a stack trace
+  // in a *log* is the entire reason the log exists. Suppressing it left the
+  // response telling the caller "the error has been logged" and the log holding
+  // the one thing that could not act on it.
   console.error(
     JSON.stringify({
       level: 'error',
@@ -42,7 +48,7 @@ export function errorHandler(error: Error, c: Context): Response {
       path: c.req.path,
       method: c.req.method,
       message: error.message,
-      stack: env.NODE_ENV === 'production' ? undefined : error.stack,
+      stack: error.stack,
     }),
   );
 

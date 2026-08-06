@@ -22,6 +22,18 @@ export interface RateLimitOptions {
   /** Requests allowed per window, per caller. */
   limit: number;
   windowMs: number;
+
+  /**
+   * Whether forwarding headers identify the caller.
+   *
+   * Passed in rather than read from the environment here, so the decision is
+   * visible at the call site and a test can exercise both answers without
+   * reaching for the process environment.
+   *
+   * Defaults to `false`, which is the answer that cannot be exploited by
+   * getting it wrong: an unrecognised caller is limited, not exempted.
+   */
+  trustProxy?: boolean;
 }
 
 interface Window {
@@ -35,13 +47,17 @@ interface Window {
  */
 const SWEEP_THRESHOLD = 10_000;
 
-export function rateLimit({ limit, windowMs }: RateLimitOptions): MiddlewareHandler<AppEnv> {
+export function rateLimit({
+  limit,
+  windowMs,
+  trustProxy = false,
+}: RateLimitOptions): MiddlewareHandler<AppEnv> {
   // Per limiter instance, so two limiters never share a budget and each app
   // built by `createApp()` starts with a clean one.
   const windows = new Map<string, Window>();
 
   return async (c, next) => {
-    const key = callerKey(c);
+    const key = callerKey(c, trustProxy);
     const now = Date.now();
     const current = windows.get(key);
 
@@ -61,16 +77,50 @@ export function rateLimit({ limit, windowMs }: RateLimitOptions): MiddlewareHand
 /**
  * Who to count this request against.
  *
- * `x-forwarded-for` is trusted here because on Vercel the platform sets it and
- * a client cannot override it. Behind a proxy that does not, this header is
- * caller-controlled and the limit becomes advisory — which is the same thing
- * the module comment already says about it.
+ * Forwarding headers are only believed when `TRUST_PROXY` says a proxy in front
+ * of this process overwrites them — which is what Vercel does. Believing them
+ * unconditionally was the older behaviour and it made the limiter free to
+ * bypass: a client sending a fresh `x-forwarded-for` per request gets a fresh
+ * window per request, and grows the map on the way through.
+ *
+ * Untrusted deployments fall back to the socket address, which a client cannot
+ * choose. When even that is unavailable the request is counted against a shared
+ * bucket rather than waved through: an unattributable caller should be limited
+ * together with every other unattributable caller, not exempted from the limit.
  */
-function callerKey(c: Context<AppEnv>): string {
-  const forwarded = c.req.header('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0]?.trim() ?? 'unknown';
+function callerKey(c: Context<AppEnv>, trustProxy: boolean): string {
+  if (trustProxy) {
+    const forwarded = c.req.header('x-forwarded-for');
+    if (forwarded) {
+      // The left-most entry is the original client; everything after it was
+      // appended by successive hops.
+      const client = forwarded.split(',')[0]?.trim();
+      if (client) return client;
+    }
 
-  return c.req.header('x-real-ip') ?? 'unknown';
+    const real = c.req.header('x-real-ip')?.trim();
+    if (real) return real;
+  }
+
+  return socketAddress(c) ?? 'unattributed';
+}
+
+/**
+ * The peer address, when the runtime exposes one.
+ *
+ * `getConnInfo` is per-adapter and there is no shared abstraction that works on
+ * both Node and the Workers-style runtimes, so this reads what the Node adapter
+ * attaches and gives up cleanly anywhere else. Giving up means the shared
+ * bucket, which is a limit rather than a hole.
+ */
+function socketAddress(c: Context<AppEnv>): string | undefined {
+  const bindings: unknown = c.env;
+  if (typeof bindings !== 'object' || bindings === null) return undefined;
+
+  const incoming = (bindings as { incoming?: { socket?: { remoteAddress?: unknown } } }).incoming;
+  const address = incoming?.socket?.remoteAddress;
+
+  return typeof address === 'string' && address.length > 0 ? address : undefined;
 }
 
 function sweep(windows: Map<string, Window>, now: number): void {
