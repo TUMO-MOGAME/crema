@@ -48,8 +48,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+      # `test:coverage`, not `test`. This ran the plain script, so the shared
+      # package's 95/90/95/95 thresholds were configured and never enforced —
+      # and its `--passWithNoTests` meant deleting every contract test would
+      # have gone green.
       - name: Contract tests
-        run: npm run test -w @crema/shared
+        run: npm run test:coverage -w @crema/shared
       - name: Web tests
         run: npm run test:coverage -w @crema/frontend
       - name: Upload coverage
