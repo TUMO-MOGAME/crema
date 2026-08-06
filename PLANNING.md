@@ -179,7 +179,7 @@ commit. There is no drift, and no hand-written duplicate types.
 | `GET`    | `/api/brews?method=v60` | `200`              | `400` unknown method             |
 | `GET`    | `/api/brews/:id`        | `200`              | `404`                            |
 | `POST`   | `/api/brews`            | `201` + `Location` | `400` validation, `422` semantic |
-| `PATCH`  | `/api/brews/:id`        | `200`              | `400`, `404`                     |
+| `PATCH`  | `/api/brews/:id`        | `200`              | `400`, `404`, `422` semantic     |
 | `DELETE` | `/api/brews/:id`        | `204`              | `404`                            |
 | `GET`    | `/api/brew-methods`     | `200`              | —                                |
 | `GET`    | `/api/stats`            | `200`              | —                                |
@@ -201,6 +201,18 @@ Errors use a single envelope so the frontend has exactly one shape to handle:
   }
 }
 ```
+
+**400 against 422.** A 400 means a field is wrong on its own — blank, too long,
+not a number, not a brew method — and the client can point at the input. A 422
+means every field passed and the combination is impossible: a brew dated in the
+future, or less water than coffee. Two codes rather than one because the client
+does different things with them.
+
+The 422 on `PATCH` was added while building Phase 3. The table originally listed
+only `400` and `404` there, which left the semantic rules enforced on create and
+not on update — and a rule you can walk around one `PATCH` at a time is not a
+rule. Sending 400g of coffee to a brew already holding 288g of water is refused
+by both routes now, for the same reason and with the same code.
 
 ---
 
