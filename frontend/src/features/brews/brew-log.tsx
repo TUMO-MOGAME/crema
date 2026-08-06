@@ -1,0 +1,187 @@
+import type { Brew, BrewMethodSlug, CreateBrewInput } from '@crema/shared';
+import { useState } from 'react';
+import { Button } from '../../components/button';
+import { ThemeToggle } from '../../components/theme-toggle';
+import { brewCountTitle, useDocumentTitle } from '../../hooks/use-document-title';
+import { BrewFormDialog } from './brew-form-dialog';
+import { BrewRow } from './brew-row';
+import { DeleteConfirmDialog } from './delete-confirm-dialog';
+import { MethodFilter } from './method-filter';
+import { useBrewMethods, useBrews, useCreateBrew, useDeleteBrew, useUpdateBrew } from './use-brews';
+
+/**
+ * The brew log — wireframe 1, and the dialogs it opens.
+ *
+ * One column, centred, with the width capped at something readable. A log is
+ * read down, so the extra room on a wide screen goes into breathing space
+ * rather than into columns that would break the scan.
+ */
+export function BrewLog() {
+  const [method, setMethod] = useState<BrewMethodSlug | ''>('');
+  const [editing, setEditing] = useState<Brew | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<Brew | null>(null);
+
+  const brews = useBrews(method || undefined);
+  const methods = useBrewMethods();
+  const create = useCreateBrew();
+  const update = useUpdateBrew();
+  const remove = useDeleteBrew();
+
+  // The brief asks for the count in the page title, and it has to follow the
+  // data rather than the filter — `Brews: 3` while filtered to three of twelve
+  // would be a different claim than the one intended.
+  const total = useBrews().data?.length ?? 0;
+  useDocumentTitle(brewCountTitle(total));
+
+  const dialogOpen = adding || editing !== null;
+
+  const closeForm = () => {
+    setAdding(false);
+    setEditing(null);
+    create.reset();
+    update.reset();
+  };
+
+  /**
+   * The dialog closes on success and stays open on failure.
+   *
+   * The catch is not swallowing the error — React Query holds it, and it is
+   * rendered on the offending field or as a banner. What it prevents is the
+   * rejection escaping into an unhandled promise, and the form closing over
+   * work the server refused to keep.
+   */
+  const save = async (values: CreateBrewInput) => {
+    try {
+      if (editing) await update.mutateAsync({ id: editing.id, changes: values });
+      else await create.mutateAsync(values);
+
+      closeForm();
+    } catch {
+      // Left open, with the reason attached to the field that caused it.
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+
+    try {
+      await remove.mutateAsync(deleting);
+      setDeleting(null);
+      closeForm();
+    } catch {
+      // The confirmation stays up rather than reporting a deletion that failed.
+    }
+  };
+
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-6 px-5 py-10 sm:px-8 sm:py-14">
+      <div className="flex justify-end">
+        <ThemeToggle />
+      </div>
+
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="font-display text-ink-strong text-display font-bold tracking-[-0.03em]">
+          Brew log
+        </h1>
+
+        <Button onClick={() => setAdding(true)}>Add</Button>
+      </header>
+
+      <MethodFilter methods={methods.data ?? []} value={method} onChange={setMethod} />
+
+      <section aria-live="polite" aria-busy={brews.isPending}>
+        {brews.isPending && <Skeletons />}
+
+        {brews.isError && (
+          <ErrorState message={brews.error.message} onRetry={() => void brews.refetch()} />
+        )}
+
+        {brews.isSuccess &&
+          (brews.data.length === 0 ? (
+            <EmptyState method={method} onClearFilter={() => setMethod('')} />
+          ) : (
+            <ul className="border-hairline border-t">
+              {brews.data.map((brew, index) => (
+                <BrewRow key={brew.id} brew={brew} index={index} onEdit={setEditing} />
+              ))}
+            </ul>
+          ))}
+      </section>
+
+      <BrewFormDialog
+        open={dialogOpen}
+        onClose={closeForm}
+        brew={editing ?? undefined}
+        methods={methods.data ?? []}
+        onSubmit={save}
+        onDelete={editing ? () => setDeleting(editing) : undefined}
+        pending={create.isPending || update.isPending}
+        error={create.error ?? update.error}
+      />
+
+      <DeleteConfirmDialog
+        brew={deleting}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => void confirmDelete()}
+        pending={remove.isPending}
+      />
+    </main>
+  );
+}
+
+/**
+ * An empty screen is an invitation, so it says what to do next. The filtered
+ * case offers the way out of the filter — otherwise the only clue that twelve
+ * brews still exist is remembering you set a filter.
+ */
+function EmptyState({ method, onClearFilter }: { method: string; onClearFilter: () => void }) {
+  if (method) {
+    return (
+      <div className="border-hairline flex flex-col items-start gap-3 border-t py-16">
+        <p className="text-ink text-body">No brews logged with this method yet.</p>
+        <Button variant="quiet" onClick={onClearFilter} className="px-0">
+          Show all methods
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-hairline flex flex-col gap-2 border-t py-16">
+      <p className="text-ink-strong text-row font-semibold">Nothing logged yet.</p>
+      <p className="text-ink-muted text-body">
+        Add your first brew and the ratios start telling you something.
+      </p>
+    </div>
+  );
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div role="alert" className="border-hairline flex flex-col items-start gap-3 border-t py-16">
+      <p className="text-ink-strong text-row font-semibold">Could not load your brews.</p>
+      <p className="text-ink-muted text-body">{message}</p>
+      <Button variant="quiet" onClick={onRetry} className="px-0">
+        Try again
+      </Button>
+    </div>
+  );
+}
+
+/** Row-shaped, so the list does not jump when the data lands. */
+function Skeletons() {
+  return (
+    <ul className="border-hairline border-t" aria-hidden="true">
+      {[0, 1, 2].map((row) => (
+        <li key={row} className="border-hairline flex items-center gap-4 border-b py-4">
+          <div className="bg-sunken size-12 shrink-0 animate-pulse rounded-full" />
+          <div className="flex flex-1 flex-col gap-2">
+            <div className="bg-sunken h-5 w-1/2 animate-pulse rounded" />
+            <div className="bg-sunken h-6 w-3/4 animate-pulse rounded-full" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
