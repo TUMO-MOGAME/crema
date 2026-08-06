@@ -1,8 +1,9 @@
 import {
-  brewSchema,
+  brewPageSchema,
   isApiErrorBody,
   type ApiErrorBody,
   type Brew,
+  type BrewPage,
   type CreateBrewInput,
 } from '@crema/shared';
 import { randomUUID } from 'node:crypto';
@@ -76,7 +77,7 @@ describe('GET /api/brews', () => {
     const response = await app.request('/api/brews');
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual([]);
+    await expect(response.json()).resolves.toMatchObject({ brews: [], total: 0 });
   });
 
   it('responds 200 with every brew', async () => {
@@ -84,7 +85,7 @@ describe('GET /api/brews', () => {
     await given({ beans: 'Kenyan AA' });
 
     const response = await app.request('/api/brews');
-    const brews = (await response.json()) as Brew[];
+    const { brews } = (await response.json()) as BrewPage;
 
     expect(response.status).toBe(200);
     expect(brews).toHaveLength(2);
@@ -93,16 +94,18 @@ describe('GET /api/brews', () => {
   it('returns brews the shared contract accepts, so the frontend types are true', async () => {
     await given();
 
-    const brews = (await (await app.request('/api/brews')).json()) as unknown[];
+    const body: unknown = await (await app.request('/api/brews')).json();
 
-    expect(() => brewSchema.array().parse(brews)).not.toThrow();
+    // The whole envelope, not just the brews inside it: `total`, `limit` and
+    // `offset` are part of what the frontend infers its types from too.
+    expect(() => brewPageSchema.parse(body)).not.toThrow();
   });
 
   it('returns the most recently brewed first', async () => {
     const older = await given({ beans: 'Older', brewedAt: daysAgo(5) });
     const newer = await given({ beans: 'Newer', brewedAt: daysAgo(1) });
 
-    const brews = (await (await app.request('/api/brews')).json()) as Brew[];
+    const { brews } = (await (await app.request('/api/brews')).json()) as BrewPage;
 
     expect(brews.map((brew) => brew.id)).toEqual([newer.id, older.id]);
   });
@@ -114,7 +117,7 @@ describe('GET /api/brews?method=', () => {
     await given({ method: 'espresso', coffeeGrams: 18, waterGrams: 36 });
 
     const response = await app.request('/api/brews?method=espresso');
-    const brews = (await response.json()) as Brew[];
+    const { brews } = (await response.json()) as BrewPage;
 
     expect(response.status).toBe(200);
     expect(brews).toHaveLength(1);
@@ -140,7 +143,7 @@ describe('GET /api/brews?method=', () => {
     const response = await app.request('/api/brews?method=');
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toHaveLength(1);
+    await expect(response.json()).resolves.toMatchObject({ total: 1 });
   });
 });
 
@@ -282,7 +285,7 @@ describe('POST /api/brews', () => {
     await post({ ...input, beans: '' });
     await post({ ...input, coffeeGrams: 288, waterGrams: 18 });
 
-    await expect((await app.request('/api/brews')).json()).resolves.toEqual([]);
+    await expect((await app.request('/api/brews')).json()).resolves.toMatchObject({ brews: [] });
   });
 });
 
@@ -396,7 +399,7 @@ describe('DELETE /api/brews/:id', () => {
     const created = await given();
     await app.request(`/api/brews/${created.id}`, { method: 'DELETE' });
 
-    await expect((await app.request('/api/brews')).json()).resolves.toEqual([]);
+    await expect((await app.request('/api/brews')).json()).resolves.toMatchObject({ brews: [] });
   });
 
   it('responds 404 when nothing has that id', async () => {
@@ -426,7 +429,7 @@ describe('DELETE /api/brews/:id', () => {
     const removed = await given({ beans: 'Removed' });
 
     await app.request(`/api/brews/${removed.id}`, { method: 'DELETE' });
-    const brews = (await (await app.request('/api/brews')).json()) as Brew[];
+    const { brews } = (await (await app.request('/api/brews')).json()) as BrewPage;
 
     expect(brews.map((brew) => brew.id)).toEqual([kept.id]);
   });

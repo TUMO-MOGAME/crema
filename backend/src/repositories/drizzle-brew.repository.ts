@@ -1,16 +1,18 @@
 import {
   brewMethodLabel,
   BREW_METHOD_SLUGS,
+  BREW_PAGE,
   EMPTY_BREW_STATS,
   isBrewMethodSlug,
   type Brew,
   type BrewMethodSlug,
   type BrewMethodStats,
+  type BrewPage,
   type BrewStats,
   type CreateBrewInput,
   type UpdateBrewInput,
 } from '@crema/shared';
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { brewMethods, brews, type BrewRow, type NewBrewRow } from '../db/schema';
 import { toIsoInstant, type BrewFilter, type BrewRepository } from './brew.repository';
@@ -43,7 +45,7 @@ export class DrizzleBrewRepository implements BrewRepository {
 
   constructor(private readonly db: Database) {}
 
-  async list(filter?: BrewFilter): Promise<Brew[]> {
+  async list(filter?: BrewFilter): Promise<BrewPage> {
     const methods = await this.methods();
 
     const conditions = [isNull(brews.deletedAt)];
@@ -51,15 +53,53 @@ export class DrizzleBrewRepository implements BrewRepository {
       conditions.push(eq(brews.methodId, methodId(methods, filter.method)));
     }
 
+    const limit = filter?.limit ?? BREW_PAGE.defaultLimit;
+    const offset = filter?.offset ?? 0;
+
+    // `count(*) over ()` rather than a second `select count(*)`: the window
+    // function is evaluated before LIMIT, so one round trip returns both the
+    // page and the total that matched. Two queries would also be two chances
+    // for a concurrent write to land between them and report a page and a total
+    // that disagree.
     const rows = await this.db
-      .select()
+      .select({ row: brews, total: sql<string>`count(*) over ()` })
       .from(brews)
       .where(and(...conditions))
       // The tiebreakers keep the list stable between requests. `brewed_at desc`
-      // alone leaves two brews logged for the same moment free to swap places.
-      .orderBy(desc(brews.brewedAt), desc(brews.createdAt), asc(brews.id));
+      // alone leaves two brews logged for the same moment free to swap places —
+      // and under paging that is worse than cosmetic, because an unstable sort
+      // lets a brew appear on two pages or on none.
+      .orderBy(desc(brews.brewedAt), desc(brews.createdAt), asc(brews.id))
+      .limit(limit)
+      .offset(offset);
 
-    return rows.map((row) => toBrew(row, methods));
+    return {
+      brews: rows.map(({ row }) => toBrew(row, methods)),
+      total: rows[0] === undefined ? await this.count(conditions) : Number(rows[0].total),
+      limit,
+      offset,
+    };
+  }
+
+  /**
+   * How many brews match, when the page itself cannot say.
+   *
+   * `count(*) over ()` is evaluated per returned row, so an empty page carries
+   * no count — and an empty page does not mean an empty result: an offset past
+   * the end of a log of three brews returns nothing while the total is still
+   * three. Reading it as zero is what the contract suite caught, by asking the
+   * in-memory adapter the same question and getting a different answer.
+   *
+   * Only reached when the page came back empty, so the common path stays at one
+   * round trip.
+   */
+  private async count(conditions: SQL[]): Promise<number> {
+    const [row] = await this.db
+      .select({ total: sql<string>`count(*)` })
+      .from(brews)
+      .where(and(...conditions));
+
+    return row === undefined ? 0 : Number(row.total);
   }
 
   async findById(id: string): Promise<Brew | null> {
@@ -149,15 +189,23 @@ export class DrizzleBrewRepository implements BrewRepository {
    * each aggregate; the in-memory adapter matches them, not the other way
    * round.
    *
-   * Both views group by `user_id`, and in v1 every brew has none — so there is
-   * exactly one group. When authentication lands this filters by the caller's
-   * id, which is the same change the rest of the interface needs.
+   * Both views group by `user_id`, and in v1 every brew has none — so both
+   * queries say `user_id is null` rather than trusting that to be the only
+   * group there is. Without it, `select ... from public.brew_stats` returns one
+   * row per user and this took whichever arrived first: correct for exactly as
+   * long as the table has one user in it, and silently somebody else's numbers
+   * afterwards. The per-method query has the same shape of bug, where it would
+   * show as duplicate methods rather than wrong totals.
+   *
+   * When authentication lands, these two predicates become `user_id = $caller`
+   * and the failure mode was never reachable.
    */
   async stats(): Promise<BrewStats> {
     const [totals] = await this.db.execute<StatsRow>(
       sql`select brew_count, average_rating, average_ratio, methods_used,
                  first_brewed_at, last_brewed_at
-          from public.brew_stats`,
+          from public.brew_stats
+          where user_id is null`,
     );
 
     if (!totals) return { ...EMPTY_BREW_STATS, byMethod: [] };
@@ -165,7 +213,8 @@ export class DrizzleBrewRepository implements BrewRepository {
     const rows = await this.db.execute<MethodStatsRow>(
       sql`select method_slug, brew_count, average_rating, average_ratio,
                  min_ratio, max_ratio, last_brewed_at
-          from public.brew_stats_by_method`,
+          from public.brew_stats_by_method
+          where user_id is null`,
     );
 
     const byMethod = rows

@@ -100,10 +100,10 @@ describe('GET /api/stats', () => {
     await given({ method: 'chemex', coffeeGrams: 22, waterGrams: 352 });
     await given({ method: 'drip', coffeeGrams: 10, waterGrams: 120 });
 
-    const listed = (await (await app.request('/api/brews')).json()) as unknown[];
+    const listed = (await (await app.request('/api/brews')).json()) as { total: number };
 
     // The page title is `Brews: {n}`. Two sources for that number would
     // eventually show two different numbers on the same screen.
-    expect((await stats()).brewCount).toBe(listed.length);
+    expect((await stats()).brewCount).toBe(listed.total);
   });
 });

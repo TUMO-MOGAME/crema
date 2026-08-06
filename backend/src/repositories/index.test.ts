@@ -24,7 +24,10 @@ describe('createBrewRepository', () => {
   it('seeds it, so a fresh deployment is not an empty screen', async () => {
     const repository = createBrewRepository(loadEnv({}));
 
-    await expect(repository.list()).resolves.not.toHaveLength(0);
+    const page = await repository.list();
+
+    expect(page.brews.length).toBeGreaterThan(0);
+    expect(page.total).toBeGreaterThan(0);
   });
 
   it('builds the Drizzle adapter when the data source says postgres', () => {

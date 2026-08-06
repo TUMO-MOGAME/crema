@@ -1,6 +1,7 @@
 import type {
   Brew,
   BrewMethodSlug,
+  BrewPage,
   BrewStats,
   CreateBrewInput,
   UpdateBrewInput,
@@ -34,8 +35,16 @@ import type {
  * than it would have been without the table column already in place.
  */
 export interface BrewRepository {
-  /** Live brews, newest brew date first. */
-  list(filter?: BrewFilter): Promise<Brew[]>;
+  /**
+   * One page of live brews, newest brew date first, with the total that matched
+   * the filter.
+   *
+   * Paged rather than whole, because "return every row" is a query that works
+   * until it doesn't and then fails at the worst moment. The total comes back
+   * alongside the page so a caller never has to fetch everything in order to
+   * count it — which is exactly what the client used to do.
+   */
+  list(filter?: BrewFilter): Promise<BrewPage>;
 
   /** `null` when no live brew has that id. */
   findById(id: string): Promise<Brew | null>;
@@ -63,9 +72,17 @@ export interface BrewRepository {
   stats(): Promise<BrewStats>;
 }
 
-/** An absent `method` means every method, not "no method". */
+/**
+ * An absent `method` means every method, not "no method".
+ *
+ * `limit` and `offset` are resolved by the caller rather than defaulted here,
+ * so both adapters page identically and neither has an opinion of its own about
+ * how big a page is.
+ */
 export interface BrewFilter {
   method?: BrewMethodSlug;
+  limit?: number;
+  offset?: number;
 }
 
 /* -------------------------------------------------------------------------

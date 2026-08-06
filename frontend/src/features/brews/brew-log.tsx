@@ -29,10 +29,14 @@ export function BrewLog() {
   const remove = useDeleteBrew();
 
   // The brief asks for the count in the page title, and it has to follow the
-  // data rather than the filter — `Brews: 3` while filtered to three of twelve
-  // would be a different claim than the one intended.
-  const total = useBrews().data?.length ?? 0;
-  useDocumentTitle(brewCountTitle(total));
+  // whole log rather than the filter — `Brews: 3` while filtered to three of
+  // twelve would be a different claim than the one intended.
+  //
+  // The unfiltered total is read from a page-sized request rather than by
+  // loading every brew: the response says how many matched, so counting costs
+  // one page and not the log.
+  const unfiltered = useBrews();
+  useDocumentTitle(brewCountTitle(unfiltered.total));
 
   const dialogOpen = adding || editing !== null;
 
@@ -90,7 +94,20 @@ export function BrewLog() {
 
       <MethodFilter methods={methods.data ?? []} value={method} onChange={setMethod} />
 
-      <section aria-live="polite" aria-busy={brews.isPending}>
+      {/*
+        The live region is a one-line summary, not the list.
+
+        `aria-live` used to sit on the section wrapping everything, so changing
+        the filter re-announced all twelve rows — the assistive equivalent of
+        reading the page aloud from the top every time you narrow it. What a
+        reader needs to hear is what changed and how much of it there now is;
+        the rows themselves are there to be navigated, not recited.
+      */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {listStatus(brews, method)}
+      </p>
+
+      <section aria-busy={brews.isPending}>
         {brews.isPending && <Skeletons />}
 
         {brews.isError && (
@@ -98,14 +115,33 @@ export function BrewLog() {
         )}
 
         {brews.isSuccess &&
-          (brews.data.length === 0 ? (
+          (brews.brews.length === 0 ? (
             <EmptyState method={method} onClearFilter={() => setMethod('')} />
           ) : (
-            <ul className="border-hairline border-t">
-              {brews.data.map((brew, index) => (
-                <BrewRow key={brew.id} brew={brew} index={index} onEdit={setEditing} />
-              ))}
-            </ul>
+            <>
+              <ul className="border-hairline border-t">
+                {brews.brews.map((brew, index) => (
+                  <BrewRow key={brew.id} brew={brew} index={index} onEdit={setEditing} />
+                ))}
+              </ul>
+
+              {brews.hasNextPage && (
+                <div className="flex flex-col items-center gap-2 pt-6">
+                  <Button
+                    variant="quiet"
+                    onClick={() => void brews.fetchNextPage()}
+                    disabled={brews.isFetchingNextPage}
+                  >
+                    {brews.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                  </Button>
+                  {/* Says how far through the log you are, so "Load more" is a
+                      known quantity rather than an open-ended one. */}
+                  <p className="text-ink-muted text-micro tabular">
+                    Showing {brews.brews.length} of {brews.total}
+                  </p>
+                </div>
+              )}
+            </>
           ))}
       </section>
 
@@ -128,6 +164,28 @@ export function BrewLog() {
       />
     </main>
   );
+}
+
+/**
+ * What the live region says.
+ *
+ * One sentence describing the state of the list: loading, broken, empty, or how
+ * much of it is on screen. It is deliberately not the list itself.
+ */
+function listStatus(brews: ReturnType<typeof useBrews>, method: string): string {
+  if (brews.isPending) return 'Loading brews.';
+  if (brews.isError) return 'Could not load your brews.';
+
+  if (brews.total === 0) {
+    return method ? 'No brews logged with this method.' : 'No brews logged yet.';
+  }
+
+  const shown = brews.brews.length;
+  const noun = brews.total === 1 ? 'brew' : 'brews';
+
+  return shown < brews.total
+    ? `Showing ${shown} of ${brews.total} ${noun}.`
+    : `${brews.total} ${noun}.`;
 }
 
 /**
