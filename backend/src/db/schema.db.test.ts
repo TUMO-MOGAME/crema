@@ -174,6 +174,11 @@ describe('brew constraints', () => {
     ['absurd coffee dose', { coffee_grams: 501 }],
     ['zero water', { water_grams: 0 }],
     ['absurd water volume', { water_grams: 5001 }],
+    // The two floors 0008 tightened. `numeric(6,2)` can hold 0.01 and the
+    // original `> 0` accepted it, while BREW_LIMITS has always said 0.1 — so
+    // the database would take a row the contract could not describe.
+    ['coffee below the shared minimum', { coffee_grams: 0.05 }],
+    ['water below the shared minimum', { water_grams: 0.5 }],
     ['rating below range', { rating: 0 }],
     ['rating above range', { rating: 6 }],
   ])('rejects %s', async (_label, overrides) => {
