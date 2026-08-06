@@ -242,17 +242,17 @@ git pushall   # configured alias: pushes main to both remotes
 `.github/workflows/ci.yml` runs on every push and pull request. Eight stages run
 in parallel; a ninth aggregates them.
 
-| Stage           | What fails it                                                                                                 |
-| --------------- | ------------------------------------------------------------------------------------------------------------- |
-| Lint and format | Any ESLint error or Prettier drift                                                                            |
-| Typecheck       | Any type error in any workspace, plus the root e2e project                                                    |
-| Unit tests      | Contract or web test failure, or web coverage under threshold                                                 |
-| API tests       | Route, middleware or env failure, or coverage under threshold                                                 |
-| Migration lint  | Bad filename, duplicate or skipped sequence number, unterminated statement, uncommented destructive statement |
-| Security        | A high-severity advisory, or any secret found anywhere in git history                                         |
-| Build           | Build failure, or the gzip bundle exceeding its budget                                                        |
-| End-to-end      | Any Playwright journey failing against production builds                                                      |
-| **CI**          | Any of the above. This is the single required status check.                                                   |
+| Stage           | What fails it                                                                                                                                                                                                                          |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lint and format | Any ESLint error or Prettier drift                                                                                                                                                                                                     |
+| Typecheck       | Any type error in any workspace, plus the root e2e project                                                                                                                                                                             |
+| Unit tests      | Contract or web test failure, or web coverage under threshold                                                                                                                                                                          |
+| API tests       | Route, middleware or env failure, or coverage under threshold                                                                                                                                                                          |
+| Database        | A bad migration filename, duplicate or skipped sequence number, or unterminated statement; migrations failing to apply to a real Postgres 17; the Drizzle schema drifting from the SQL; any constraint not rejecting what it claims to |
+| Security        | A high-severity advisory, or any secret found anywhere in git history                                                                                                                                                                  |
+| Build           | Build failure, or the gzip bundle exceeding its budget                                                                                                                                                                                 |
+| End-to-end      | Any Playwright journey failing against production builds                                                                                                                                                                               |
+| **CI**          | Any of the above. This is the single required status check.                                                                                                                                                                            |
 
 Coverage thresholds are 80% lines and 75% branches, enforced per workspace.
 
@@ -274,6 +274,21 @@ npm run lint:migrations
 npm run build && npm run check:bundle
 npm run test:e2e
 ```
+
+The database stage needs a Postgres to talk to:
+
+```bash
+docker run -d --name crema-pg -p 55432:5432 \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=crema postgres:17-alpine
+
+export DATABASE_URL=postgres://postgres:postgres@localhost:55432/crema
+npm run db:reset        # apply every migration, then seed
+npm run test:db         # drift guard and constraint assertions
+```
+
+`npm run db:apply` applies the migrations without seeding. Neither command
+changes how the app runs — it stays on the in-memory adapter until
+`DATA_SOURCE=postgres` is set.
 
 ## 11. Troubleshooting
 

@@ -222,23 +222,38 @@ A factory reads `DATA_SOURCE` from the environment (`memory` | `postgres`) and
 returns the right one. Turning on Supabase means setting two environment
 variables in Vercel and applying the migrations. No application code changes.
 
-**Migration authorship.** The Drizzle schema in `backend/src/db/schema.ts` is
-the source of truth for types. `drizzle-kit generate` emits SQL into
-`supabase/migrations/`, and every generated file is read and edited by hand
-before it is committed — generated SQL is a draft, not a deliverable.
+**Migration authorship.** The plan was to run `drizzle-kit generate` and
+hand-review its output. In practice the SQL is hand-authored and the Drizzle
+schema mirrors it. Two reasons, both found while building it.
 
-### 5.1 Planned migrations
+Almost nothing that makes this schema good is something `drizzle-kit` emits: row
+level security policies, trigger attachment, `security_invoker` views, table and
+column comments, partial indexes, and the `auth.uid()` compatibility shim.
+Reviewing generated SQL and then hand-writing most of it anyway is worse than
+writing it once. Separately, `drizzle-kit` pulls the deprecated `@esbuild-kit/*`
+packages into the tree, carrying four moderate advisories for a tool this
+project would not end up using.
 
-| File                    | Contents                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------- |
-| `0000_extensions.sql`   | `pgcrypto`, `citext`                                                                        |
-| `0001_profiles.sql`     | `profiles` mirroring `auth.users`, ready for Supabase Auth                                  |
-| `0002_brew_methods.sql` | Lookup table + seed (V60, Aeropress, Drip, French Press, Espresso, Chemex, Moka, Cold Brew) |
-| `0003_brews.sql`        | Core table, constraints, indexes, `updated_at` trigger                                      |
-| `0004_flavor_tags.sql`  | `flavor_tags` + `brew_flavor_tags` join, for AI-extracted descriptors                       |
-| `0005_ai.sql`           | `ai_conversations`, `ai_messages`, `ai_suggestions`                                         |
-| `0006_views.sql`        | `brew_stats` view, method-level aggregates                                                  |
-| `0007_rls.sql`          | Row Level Security enabled on every table, owner-scoped policies                            |
+So the SQL is the source of truth, and `backend/src/db/schema.ts` mirrors its
+_structure_ — tables, columns, types, nullability, defaults, foreign keys — so
+queries are typed. Two hand-maintained files can diverge, so a drift guard in CI
+applies the migrations to a real Postgres and compares the result against those
+declarations. Check constraints, indexes, triggers, views and RLS are declared
+only in SQL and verified by CI exercising them, rather than restated in a second
+place.
+
+### 5.1 Migrations
+
+| File                    | Contents                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `0000_foundation.sql`   | `pgcrypto`, `citext`, the shared `set_updated_at()` trigger function                       |
+| `0001_profiles.sql`     | `profiles` mirroring `auth.users`, ready for Supabase Auth                                 |
+| `0002_brew_methods.sql` | Lookup table + seeded vocabulary, mirroring `BREW_METHOD_SLUGS`                            |
+| `0003_brews.sql`        | Core table, constraints, indexes, generated `brew_ratio`, `updated_at` trigger             |
+| `0004_flavor_tags.sql`  | `flavor_tags` + `brew_flavor_tags` join, carrying provenance and confidence                |
+| `0005_ai.sql`           | `ai_conversations`, `ai_messages`, `ai_suggestions` with the human-in-the-loop constraints |
+| `0006_views.sql`        | `brew_stats` and `brew_stats_by_method`, both `security_invoker`                           |
+| `0007_rls.sql`          | Row Level Security on every table, owner-scoped policies, `auth.uid()` compatibility shim  |
 
 ### 5.2 `brews` table, in detail
 
