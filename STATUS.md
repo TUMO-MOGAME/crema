@@ -25,7 +25,7 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 6     | AI — Quick Log, Coach agent, guardrails       | not started | 0%       |
 | 7     | Ship — Vercel, docs, demo                     | not started | 0%       |
 
-**Overall: 4 of 8 phases complete.** 96 unit tests, 39 database tests and 7
+**Overall: 4 of 8 phases complete.** 115 unit tests, 39 database tests and 7
 end-to-end journeys passing, all nine CI stages green, `main` protected.
 
 ---
@@ -47,16 +47,16 @@ has push access but not admin — so the enforced workflow lives on the public
 mirror at <https://github.com/TUMO-MOGAME/crema> and both remotes are kept at
 the same commit.
 
-| Check                      | Result                                                      |
-| -------------------------- | ----------------------------------------------------------- |
-| `npm run verify`           | green — format, lint, typecheck, test                       |
-| Unit and integration tests | 96 passing (27 shared, 41 backend, 28 web)                  |
-| Database tests             | 39 passing against a real Postgres 17                       |
-| End-to-end journeys        | 7 passing against production builds                         |
-| Coverage                   | backend 100% lines / 81% branches, web 94% / 93%            |
-| Bundle                     | 86 kB js and 3 kB css gzipped, against a 250 / 40 kB budget |
-| CI                         | all nine stages green                                       |
-| Branch protection          | direct push to `main` rejected, failing PR blocked          |
+| Check                      | Result                                                        |
+| -------------------------- | ------------------------------------------------------------- |
+| `npm run verify`           | green — format, lint, typecheck, test                         |
+| Unit and integration tests | 115 passing (46 shared, 41 backend, 28 web)                   |
+| Database tests             | 39 passing against a real Postgres 17                         |
+| End-to-end journeys        | 7 passing against production builds                           |
+| Coverage                   | shared 100%, backend 100% lines / 81% branches, web 94% / 93% |
+| Bundle                     | 86 kB js and 3 kB css gzipped, against a 250 / 40 kB budget   |
+| CI                         | all nine stages green                                         |
+| Branch protection          | direct push to `main` rejected, failing PR blocked            |
 
 Toolchain as resolved: Node 24.11, TypeScript 6, ESLint 10, Vitest 4, Vite 8,
 React 19.2, Hono 4.13, Zod 4.4, Playwright 1.62.
@@ -265,6 +265,9 @@ the SQL had not.
 | 2026-08-06 | `brew_ratio` as a generated column                    | A denormalisation that earns it: every list row and every coach question compares ratios, and Postgres will not let it drift from its inputs                                                                       |
 | 2026-08-06 | RLS enabled before it is load-bearing                 | Today the API bypasses it. The day anything connects with an anon key, a table without RLS is world-readable and the failure is silent                                                                             |
 | 2026-08-06 | Database folded into the migration CI stage           | Keeps the count at nine while making one job own the database concern end to end                                                                                                                                   |
+| 2026-08-06 | npm pinned to >= 11.16 with `engine-strict=true`      | 11.6 and 11.16 disagree about whether `yaml` belongs in the lockfile. The older one writes a lockfile that breaks CI, and the break lands on the runner rather than the machine that caused it                     |
+| 2026-08-06 | `verify` runs `test:coverage` rather than `test`      | Thresholds were only enforced in CI, so a coverage regression could not be caught before pushing                                                                                                                   |
+| 2026-08-06 | Drizzle schema excluded from unit coverage            | Declarations with no branching. The Database stage compares them against a live Postgres, which is a stronger check than importing the file for a line count                                                       |
 
 ---
 
