@@ -1,4 +1,10 @@
-import type { Brew, BrewMethodSlug, CreateBrewInput, UpdateBrewInput } from '@crema/shared';
+import type {
+  Brew,
+  BrewMethodSlug,
+  BrewStats,
+  CreateBrewInput,
+  UpdateBrewInput,
+} from '@crema/shared';
 
 /**
  * The persistence contract for brews.
@@ -45,6 +51,16 @@ export interface BrewRepository {
    * also what a second delete of the same brew returns.
    */
   softDelete(id: string): Promise<boolean>;
+
+  /**
+   * Aggregates over the live brews.
+   *
+   * On the interface rather than computed in a service, because Postgres has
+   * `brew_stats` and `brew_stats_by_method` and making it read every brew into
+   * memory to add them up would be pretending the database is a filing
+   * cabinet. Deleted brews are excluded, as everywhere else.
+   */
+  stats(): Promise<BrewStats>;
 }
 
 /** An absent `method` means every method, not "no method". */
@@ -65,6 +81,24 @@ export interface BrewFilter {
 /** `coffee_grams numeric(6,2)` and `water_grams numeric(7,2)` both keep two decimals. */
 export function toStoredGrams(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * `brew_ratio numeric(10,4) generated always as (water_grams / coffee_grams)`.
+ *
+ * Four decimals, because that is the column the aggregates in
+ * `brew_stats_by_method` average over. `brewRatio()` in `@crema/shared` rounds
+ * to one decimal and is a different thing — it is for display, where `1:16.5`
+ * is the number people actually say out loud.
+ */
+export function toStoredRatio(coffeeGrams: number, waterGrams: number): number {
+  return Math.round((waterGrams / coffeeGrams) * 10_000) / 10_000;
+}
+
+/** `round(avg(...), n)`, matching how the views present each aggregate. */
+export function roundTo(value: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
 }
 
 /**
