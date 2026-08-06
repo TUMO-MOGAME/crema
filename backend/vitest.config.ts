@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Database tests need a live Postgres and run under vitest.db.config.ts.
+    exclude: ['src/**/*.db.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'lcov'],
