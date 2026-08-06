@@ -31,6 +31,17 @@ export class AppError extends Error {
     return new AppError('VALIDATION_FAILED', 'One or more fields are invalid.', details);
   }
 
+  /**
+   * Well-formed input that describes something impossible.
+   *
+   * Separate from `validation` because the client can do something different
+   * with it: a 400 points at a field that is wrong on its own, a 422 says the
+   * fields are individually fine and wrong together.
+   */
+  static semantic(message: string, details: FieldError[]): AppError {
+    return new AppError('SEMANTIC_INVALID', message, details);
+  }
+
   static rateLimited(retryAfterSeconds: number): AppError {
     return new AppError(
       'RATE_LIMITED',
