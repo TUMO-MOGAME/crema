@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { ApiError, apiRequest } from './api-client';
 
 function respondWith(body: unknown, init: ResponseInit = {}) {
@@ -26,13 +27,51 @@ describe('apiRequest', () => {
     await expect(apiRequest('/api/brews/abc')).resolves.toBeUndefined();
   });
 
-  it('sends JSON content type by default', async () => {
+  it('describes the body it sends', async () => {
+    respondWith({ status: 'ok' });
+
+    await apiRequest('/api/brews', {
+      method: 'POST',
+      body: JSON.stringify({ beans: 'Kenyan AA' }),
+    });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    expect((init?.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+  });
+
+  /**
+   * `Content-Type: application/json` is not a CORS-safelisted request header,
+   * so setting it on a request with no body bought a preflight for nothing —
+   * two round trips to read a list. A GET has no content whose type could be
+   * described, which is the reason it is safe to leave off as well as the
+   * reason it is pointless to send.
+   */
+  it('does not describe a body it is not sending', async () => {
     respondWith({ status: 'ok' });
 
     await apiRequest('/api/health');
 
     const [, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect((init?.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect((init?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+  });
+
+  it('rejects a success response that does not match the schema it was given', async () => {
+    // A 200 with the wrong shape is a broken server, not a broken request —
+    // and catching it here means the failure names the response instead of
+    // surfacing as an unreadable undefined several components away.
+    respondWith({ brews: 'not an array' });
+
+    await expect(
+      apiRequest('/api/brews', { schema: z.object({ brews: z.array(z.string()) }) }),
+    ).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
+  });
+
+  it('returns the parsed value when the schema accepts it', async () => {
+    respondWith({ beans: 'Kenyan AA' });
+
+    await expect(
+      apiRequest('/api/brews/one', { schema: z.object({ beans: z.string() }) }),
+    ).resolves.toEqual({ beans: 'Kenyan AA' });
   });
 
   it('unpacks the shared error envelope', async () => {
