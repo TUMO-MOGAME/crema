@@ -182,7 +182,7 @@ commit. There is no drift, and no hand-written duplicate types.
 | `PATCH`  | `/api/brews/:id`        | `200`              | `400`, `404`, `422` semantic     |
 | `DELETE` | `/api/brews/:id`        | `204`              | `404`                            |
 | `GET`    | `/api/brew-methods`     | `200`              | —                                |
-| `GET`    | `/api/stats`            | `200`              | —                                |
+| `GET`    | `/api/stats`            | `200`              | — (empty log is zeroes, not 404) |
 | `POST`   | `/api/coach/chat`       | `200` streamed     | `429`, `503` when AI disabled    |
 | `POST`   | `/api/coach/parse`      | `200`              | `422` unparseable, `503`         |
 | `GET`    | `/api/health`           | `200`              | —                                |
@@ -213,6 +213,16 @@ only `400` and `404` there, which left the semantic rules enforced on create and
 not on update — and a rule you can walk around one `PATCH` at a time is not a
 rule. Sending 400g of coffee to a brew already holding 288g of water is refused
 by both routes now, for the same reason and with the same code.
+
+**Rate limiting.** Every `/api/*` route is behind a fixed window of
+`RATE_LIMIT_PER_MINUTE` requests per caller, answering `429` with an accurate
+`Retry-After`. The window lives in the instance's memory, which makes it a
+courtesy limit and not a security control: the API runs as serverless functions,
+so a caller spread across ten cold starts gets ten windows. That is stated
+plainly in `backend/src/middleware/rate-limit.ts` rather than left for someone
+to discover. It exists to stop a runaway client loop or a retry storm, and it is
+the same middleware the coach routes will use in Phase 6 with a much tighter
+limit, where a request costs a model call instead of a map lookup.
 
 ---
 

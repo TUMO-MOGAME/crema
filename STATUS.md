@@ -19,13 +19,13 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 0     | Foundation — monorepo, tooling, docs skeleton | **done**    | 100%     |
 | 1     | Pipeline — CI stages, branch protection       | **done**    | 100%     |
 | 2     | Schema — Drizzle + Supabase migrations        | **done**    | 100%     |
-| 3     | API — Hono, services, in-memory repository    | in progress | 70%      |
+| 3     | API — Hono, services, in-memory repository    | **done**    | 100%     |
 | 4     | UI — design system, CRUD screens              | not started | 0%       |
 | 5     | Polish — a11y, motion, states                 | not started | 0%       |
 | 6     | AI — Quick Log, Coach agent, guardrails       | not started | 0%       |
 | 7     | Ship — Vercel, docs, demo                     | not started | 0%       |
 
-**Overall: 4 of 8 phases complete.** 228 unit tests, 79 database tests and 7
+**Overall: 5 of 8 phases complete.** 272 unit tests, 91 database tests and 7
 end-to-end journeys passing, all nine CI stages green, `main` protected.
 
 ---
@@ -37,18 +37,19 @@ and lints clean on a fresh install; every change to the portfolio repository has
 to pass nine CI stages behind a protected branch; and the full Postgres schema
 exists as ordered migrations that CI applies to a real database on every push.
 
-Phase 3 is most of the way there. The persistence layer and the brew CRUD
-surface are built: `BrewRepository` as an interface, a contract suite of 27
-tests that both adapters pass, the in-memory adapter that runs v1 seeded from
-the same demo data as `seed.sql`, and the Drizzle adapter written against the
-real schema and proven against a real Postgres — while `DATA_SOURCE` still says
-`memory` and nothing connects to anything. What is left is the endpoints around
-the edges: `/api/brew-methods`, `/api/stats`, and rate limiting.
+Phase 3 is complete. The API serves every route the plan specifies for v1: brew
+CRUD with each status code in section 4.4, the method vocabulary, and aggregates
+over the log. Underneath it, `BrewRepository` is an interface with two adapters
+and one contract suite of 39 tests that both must pass — the in-memory one that
+runs v1, seeded from the same demo data as `seed.sql`, and the Drizzle one
+written against the real schema and proven against a real Postgres while staying
+switched off.
 
 The application still runs entirely on the in-memory adapter. No connection
 string, no Supabase project, nothing to provision — exactly as intended. The
 schema is ready and waiting rather than wired in, and now so is the code that
-would talk to it.
+would talk to it: flipping `DATA_SOURCE` to `postgres` changes no application
+code, and the contract suite is the evidence rather than the intention.
 
 The repository lives in two places. `main` cannot be protected on the classroom
 repository — it belongs to the `Umuzi-classroom` organisation and this account
@@ -59,10 +60,10 @@ the same commit.
 | Check                      | Result                                                         |
 | -------------------------- | -------------------------------------------------------------- |
 | `npm run verify`           | green — format, lint, typecheck, test                          |
-| Unit and integration tests | 228 passing (46 shared, 154 backend, 28 web)                   |
-| Database tests             | 79 passing against a real Postgres 17                          |
+| Unit and integration tests | 272 passing (57 shared, 187 backend, 28 web)                   |
+| Database tests             | 91 passing against a real Postgres 17                          |
 | End-to-end journeys        | 7 passing against production builds                            |
-| Coverage                   | shared 100%, backend 99.7% lines / 88% branches, web 94% / 93% |
+| Coverage                   | shared 100%, backend 99.3% lines / 86% branches, web 94% / 93% |
 | Bundle                     | 86 kB js and 3 kB css gzipped, against a 250 / 40 kB budget    |
 | CI                         | all nine stages green                                          |
 | Branch protection          | direct push to `main` rejected, failing PR blocked             |
@@ -76,10 +77,11 @@ Nothing.
 
 ## Next
 
-The rest of Phase 3 — `/api/brew-methods` so the filter dropdown reads its
-vocabulary from the API rather than a duplicated constant, `/api/stats` over the
-`brew_stats` view, and rate limiting on the routes that will eventually cost
-money to serve. Then Phase 4, the UI, against a contract that is now frozen.
+Phase 4 — the UI, against a contract that is now frozen. Design tokens and
+themes, the brew list with its method filter, the card and dialog from the
+wireframes, delete with confirmation, form validation that blocks submit on a
+blank field, the `Brews: {n}` title updating live, and responsive layouts at 320
+/ 768 / 1280.
 
 ---
 
@@ -183,7 +185,7 @@ contract disagreed about what blank means. Now written as `x ~ '[^[:space:]]'`
 on every text column that must not be empty. The test suite found it; reading
 the SQL had not.
 
-### Phase 3 — API
+### Phase 3 — API — done
 
 - [x] Hono app factory, separated from the Node listener
 - [x] Zod-validated env loader that fails fast
@@ -192,11 +194,9 @@ the SQL had not.
 - [x] `InMemoryBrewRepository`
 - [x] `DrizzleBrewRepository` (written, not activated)
 - [x] CRUD routes with the status codes in PLANNING section 4.4
-- [x] `/api/health`
-- [ ] `/api/brew-methods`, `/api/stats`
-- [x] CORS, security headers
-- [ ] Rate limiting
-- [x] Integration tests covering every row of the brew table
+- [x] `/api/brew-methods`, `/api/stats`, `/api/health`
+- [x] CORS, rate limiting, security headers
+- [x] Integration tests covering every row of the API table
 
 The repository layer is the part worth reading. `BrewRepository` is an interface
 with two implementations and one test suite: 27 contract tests that both
@@ -221,6 +221,25 @@ variable flipped:
 enforced on create and not on update, which left a rule you could walk around
 one `PATCH` at a time. PLANNING section 4.4 was corrected rather than the
 behaviour.
+
+`/api/stats` reads the `brew_stats` and `brew_stats_by_method` views rather than
+loading every brew and adding it up, which meant the in-memory adapter had to
+reproduce their arithmetic exactly — ratios averaged from the stored generated
+column, ratings rounded to two decimals, ratios to one. Twelve more contract
+tests hold the two together. An empty log is `200` with real zeroes rather than
+`404`, so the client has one shape to render instead of two.
+
+`/api/brew-methods` serves the vocabulary from `@crema/shared` rather than
+querying `brew_methods`. The table is the same list, asserted by a test that
+reads the migration, so a query would be a round trip to learn something the
+process cannot get wrong. What the endpoint buys is the frontend no longer
+keeping its own copy.
+
+Rate limiting is a fixed window held in the instance's memory, and the comment
+on it says plainly that this makes it a courtesy limit rather than a guarantee —
+each serverless instance counts only what it serves. It stops a runaway client
+loop, which is what it is for. Phase 6 reuses it for the coach routes, where a
+request costs a model call instead of a map lookup.
 
 ### Phase 4 — UI
 
@@ -307,6 +326,9 @@ behaviour.
 | 2026-08-06 | `SEMANTIC_INVALID` (422) split from validation (400)  | A field that is wrong on its own can be highlighted; a combination that is impossible cannot. The client does different things with them, so they are different codes                                              |
 | 2026-08-06 | Malformed `:id` answers 404, not 400                  | `/api/brews/banana` names no brew, the same as a well-formed id that was never used. It also declines to tell an unauthenticated caller what a valid id looks like                                                 |
 | 2026-08-06 | Drizzle adapter excluded from unit coverage           | Same reasoning as the schema: it is covered by the contract suite against a real database. Counting it here would measure how much of it the _other_ adapter's tests happen to touch                               |
+| 2026-08-06 | `stats()` on the repository, not in a service         | Postgres has the views. Reading every brew into memory to add them up would be treating the database as a filing cabinet                                                                                           |
+| 2026-08-06 | `/api/brew-methods` served from the shared constant   | The table is the same list and a test asserts it. The endpoint exists so the frontend stops carrying its own copy, not so the vocabulary can be queried                                                            |
+| 2026-08-06 | Rate limiting in instance memory, not shared state    | Honest about being a courtesy limit. A global guarantee needs Upstash or Postgres, and that is a dependency to add when there is a reason to, not now                                                              |
 
 ---
 
@@ -321,3 +343,4 @@ behaviour.
 | 2026-08-06 | Phase 2 built. Eight migrations, seed, Drizzle mirror, migration runner, 39 database tests and a drift guard, all verified against a real Postgres 17. CI gained a Database stage. A whitespace-handling mismatch between the SQL constraints and the Zod contract was found and fixed.                                                                                                                                                                                                                  |
 | 2026-08-06 | Phase 1 built. Coverage raised to threshold with real tests for the error paths, 91 unit tests and 7 end-to-end journeys. First CI run failed on a corrupted lockfile missing `yaml` — repaired, and the catch is the argument for `npm ci`. All nine stages green. `main` protected and the gate verified against both a direct push and a failing pull request.                                                                                                                                        |
 | 2026-08-06 | Phase 3 repository layer and brew CRUD built. `BrewRepository` with a 27-test contract suite both adapters pass, in-memory adapter seeded from the same data as `seed.sql` and guarded against drifting from it, Drizzle adapter written and proven against a real Postgres while staying dormant. 228 unit tests and 79 database tests. The contract suite found three silent differences between the adapters — gram rounding, timestamp offsets, and handing out the stored object instead of a copy. |
+| 2026-08-06 | Phase 3 finished. `/api/brew-methods`, `/api/stats` over the two aggregate views, and a fixed-window rate limiter with an accurate `Retry-After`. The contract suite grew to 39 tests as the stats arithmetic had to be reproduced exactly by the in-memory adapter. 272 unit tests, 91 database tests, 7 end-to-end journeys.                                                                                                                                                                           |
