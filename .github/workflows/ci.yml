@@ -187,22 +187,29 @@ jobs:
     needs: [lint, typecheck, unit, api, database, security, build, e2e]
     runs-on: ubuntu-latest
     steps:
-      # Asserts success rather than listing the ways a stage can fail.
+      # Asserts success, in a step that always runs.
       #
-      # It used to check for 'failure' and 'cancelled', which let a third
-      # outcome through: a job that never starts — a runner that cannot resolve
-      # its actions, an infrastructure outage, a condition that skips it —
-      # reports 'skipped', and the gate went green with a red stage beside it.
-      # That was observed, not theorised: Lint and format failed during setup
-      # while CI reported all nine green, which is the one failure mode a single
-      # required check must not have.
+      # This was a `contains(needs.*.result, 'failure')` guard on an `if:`, and
+      # it let a red stage through twice while reporting all nine green — with
+      # Lint and format failing during setup, unable to resolve its actions
+      # during a GitHub incident. Whatever that job's result reads as, the
+      # expression did not match it, and a gate that depends on enumerating
+      # every way a stage can go wrong will keep meeting new ones.
       #
-      # Enumerating bad outcomes means the next new one is also missed. Requiring
-      # 'success' from every stage cannot be.
-      - name: Fail unless every stage succeeded
-        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+      # So the check runs unconditionally and demands the one outcome that is
+      # acceptable. It prints what it saw first, because the previous version's
+      # worst quality was that it failed silently and invisibly — there was
+      # nothing in the log to explain why it had passed.
+      - name: Require every stage to have succeeded
         run: |
-          echo "A stage did not succeed. Results: ${{ join(needs.*.result, ', ') }}"
-          exit 1
-      - name: All stages passed
-        run: echo "All nine stages green."
+          results="${{ join(needs.*.result, ' ') }}"
+          echo "Stage results: ${results}"
+
+          for result in ${results}; do
+            if [ "${result}" != "success" ]; then
+              echo "::error::A stage did not succeed. See the jobs above."
+              exit 1
+            fi
+          done
+
+          echo "All nine stages green."
