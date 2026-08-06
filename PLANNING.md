@@ -419,6 +419,25 @@ Stage 7 is the one that matters most for the "no secrets in the repo"
 requirement: `gitleaks` scans the **entire history**, not just the diff, so a
 secret committed and later removed still fails the build.
 
+**The aggregate gate.** A tenth job, `CI`, depends on all nine and is the single
+context branch protection requires — so adding or renaming a stage never means
+editing the protection rule.
+
+It must assert that every stage succeeded, and never enumerate the ways a stage
+can fail. That is not a style preference; it was learned. The gate originally
+guarded on `contains(needs.*.result, 'failure')` and was caught reporting all
+nine stages green while `Lint and format` was red, during a GitHub Actions
+outage on 2026-08-06. The result it had been handed was `abandoned` — what a job
+reports when it dies at the infrastructure level rather than at one of its
+steps, and a value that appears nowhere in the documented set of `success`,
+`failure`, `cancelled` and `skipped`.
+
+For the length of that run, the protected branch was not protected. A required
+check that can pass over a red stage is worth less than no required check,
+because it is trusted. The gate now runs unconditionally, prints
+`Stage results: …` so the reason is in the log rather than three clicks away,
+and fails unless every stage reports `success`.
+
 ---
 
 ## 8. Deployment
@@ -512,6 +531,14 @@ these phases is what STATUS.md tracks.
 | **7 — Ship**       | Vercel projects, custom domain, `deployment.md`, README, demo data, screenshots   | Live URL, green pipeline, all of section 9 checked   |
 
 Phases 3 and 4 can overlap once the API contract in `shared/` is frozen.
+
+As built, phases 0 through 4 are done. The one deliberate departure from a spec
+in this document is the rating badge in phase 4: the wireframe draws a traffic
+light, and the badge keeps its shape, size and position but runs the scale
+through the drink instead — pale ash at 1, full crema at 5, with an arc filled
+to `rating / 5`. Red against green is the one pairing a colour-blind reader
+cannot separate, and here the colour is doing the scanning work down a list. The
+value is now carried three ways, so no reader depends on any one of them.
 
 ---
 
