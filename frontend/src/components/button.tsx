@@ -18,8 +18,11 @@ type Variant = 'primary' | 'danger' | 'quiet' | 'icon';
 const VARIANTS: Record<Variant, string> = {
   primary:
     'rounded-pill bg-ink-strong text-surface px-6 py-2.5 text-body font-medium hover:opacity-90',
+  // `bg-danger-surface`, not `bg-danger`: the red that is legible *as text* on
+  // the page is too light to sit under a label. They are two tokens because
+  // they are two contrast problems.
   danger:
-    'rounded-pill bg-danger text-danger-ink px-6 py-2.5 text-body font-medium hover:opacity-90',
+    'rounded-pill bg-danger-surface text-danger-ink px-6 py-2.5 text-body font-medium hover:opacity-90',
   quiet: 'rounded-pill text-ink-muted hover:text-ink px-4 py-2.5 text-body font-medium',
   icon: 'rounded-pill text-ink-muted hover:text-ink hover:bg-sunken grid size-10 place-items-center',
 };

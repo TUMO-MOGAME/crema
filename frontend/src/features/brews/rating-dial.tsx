@@ -11,9 +11,15 @@ import { BREW_LIMITS } from '@crema/shared';
  * pairing a colour-blind reader cannot separate, which matters when the colour
  * is doing the scanning work down a list.
  *
- * So the value is said three times: the number, the warmth of the fill, and an
+ * So the value is said three times: the number, the warmth of the arc, and the
  * arc filled to `rating / 5` — the collar on a grinder, the needle on a scale.
  * Any one of the three, read alone, gives the right answer.
+ *
+ * The number is `ink-strong` rather than the extraction colour. It used to take
+ * the ramp too, which meant its contrast depended on the rating: a 1 measured
+ * 4.09:1 in the dark theme and 2.65:1 in the light one, so the worst brews were
+ * also the hardest to read. The arc still carries the colour, and as a
+ * graphical object it answers to 3:1 rather than 4.5:1.
  */
 
 const RADIUS = 21;
@@ -57,7 +63,11 @@ export function RatingDial({ rating, animate = true }: RatingDialProps) {
         />
       </svg>
 
-      <span className="tabular text-row relative font-semibold">{value}</span>
+      {/* `ink-strong`, not the ramp. The colour is the arc's job; the number's
+          job is to be readable at every rating, and wearing extraction-1 put it
+          at 2.65:1 in the light theme. Three signals remain — the number, the
+          arc's length, and the arc's colour. */}
+      <span className="tabular text-row text-ink-strong relative font-semibold">{value}</span>
     </span>
   );
 }
