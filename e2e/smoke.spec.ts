@@ -16,7 +16,14 @@ test.describe('the brew log', () => {
   test('titles the tab with the brew count', async ({ page }) => {
     await page.goto('/');
 
+    // Wait for the list before counting it. `count()` does not retry, so
+    // reading it straight after `goto` samples whenever the assertion happens
+    // to run — which is sometimes before the rows exist, and then compares a
+    // count of zero against a title that has already been set correctly.
+    await expect(page.getByRole('heading', { name: 'Zimbabwean highlands' })).toBeVisible();
+
     const rows = await page.getByRole('listitem').count();
+    expect(rows).toBeGreaterThan(0);
     await expect(page).toHaveTitle(`Brews: ${rows}`);
   });
 
