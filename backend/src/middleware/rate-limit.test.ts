@@ -13,7 +13,21 @@ import type { AppEnv } from '../types';
 function appWith(limit: number, windowMs = 60_000): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  app.use('*', rateLimit({ limit, windowMs }));
+  // `trustProxy` on, because these cases are about the counting and they
+  // identify callers by header. The cases that are about *whether* the header
+  // may be believed build their own app below.
+  app.use('*', rateLimit({ limit, windowMs, trustProxy: true }));
+  app.get('/thing', (c) => c.json({ ok: true }));
+  app.onError(errorHandler);
+
+  return app;
+}
+
+/** The default posture: forwarding headers are not evidence of anything. */
+function untrustingAppWith(limit: number): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
+
+  app.use('*', rateLimit({ limit, windowMs: 60_000 }));
   app.get('/thing', (c) => c.json({ ok: true }));
   app.onError(errorHandler);
 
@@ -109,6 +123,42 @@ describe('rate limiting', () => {
     const response = await app.request('/thing', from('203.0.113.9'));
 
     expect(response.status).toBe(200);
+  });
+
+  /**
+   * The header is trivially forged, so believing it unconditionally turned the
+   * limiter into a suggestion: one client, a fresh `x-forwarded-for` per
+   * request, and the budget never runs out. These cases pin the behaviour that
+   * closed that, in both directions.
+   */
+  describe('when the deployment does not sit behind a trusted proxy', () => {
+    it('does not let a forged forwarded header buy a fresh budget', async () => {
+      const app = untrustingAppWith(1);
+
+      await app.request('/thing', from('203.0.113.20'));
+      // A different header value, and in a trusting deployment a different
+      // caller. Here it is the same one, inventing names.
+      const response = await app.request('/thing', from('198.51.100.77'));
+
+      expect(response.status).toBe(429);
+    });
+
+    it('does not let x-real-ip buy one either', async () => {
+      const app = untrustingAppWith(1);
+
+      await app.request('/thing', { headers: { 'x-real-ip': '203.0.113.21' } });
+      const response = await app.request('/thing', { headers: { 'x-real-ip': '198.51.100.78' } });
+
+      expect(response.status).toBe(429);
+    });
+
+    it('still lets a caller through up to the limit', async () => {
+      const app = untrustingAppWith(2);
+
+      expect((await app.request('/thing')).status).toBe(200);
+      expect((await app.request('/thing')).status).toBe(200);
+      expect((await app.request('/thing')).status).toBe(429);
+    });
   });
 
   it('gives each app its own budget, so one test cannot exhaust another', async () => {
