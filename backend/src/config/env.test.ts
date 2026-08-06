@@ -59,3 +59,53 @@ describe('isAiEnabled', () => {
     expect(() => loadEnv({ GEMINI_API_KEY: '' })).toThrow(/GEMINI_API_KEY/);
   });
 });
+
+/**
+ * The combination that loses data without saying so.
+ *
+ * The in-memory adapter is a real persistence layer for a process that outlives
+ * its requests. Production is serverless, where it is not: a write succeeds,
+ * answers 201, and is gone at the next cold start — with no error anywhere to
+ * suggest it. Refusing to boot is the only signal that failure mode has.
+ */
+describe('the adapter a production deployment may use', () => {
+  it('refuses the in-memory store in production', () => {
+    expect(() => loadEnv({ NODE_ENV: 'production' })).toThrow(/DATA_SOURCE/);
+  });
+
+  it('says why, and what to do instead', () => {
+    expect(() => loadEnv({ NODE_ENV: 'production' })).toThrow(/cold start|DATA_SOURCE=postgres/);
+  });
+
+  it('allows postgres in production', () => {
+    const env = loadEnv({
+      NODE_ENV: 'production',
+      DATA_SOURCE: 'postgres',
+      DATABASE_URL: 'postgres://crema:crema@localhost:5432/crema',
+    });
+
+    expect(env.DATA_SOURCE).toBe('postgres');
+  });
+
+  it('still allows the in-memory store outside production', () => {
+    // Development and test both want the seeded adapter and neither loses
+    // anything by using it.
+    expect(loadEnv({ NODE_ENV: 'development' }).DATA_SOURCE).toBe('memory');
+    expect(loadEnv({ NODE_ENV: 'test' }).DATA_SOURCE).toBe('memory');
+  });
+});
+
+describe('TRUST_PROXY', () => {
+  it('does not trust forwarding headers unless told to', () => {
+    expect(loadEnv({}).TRUST_PROXY).toBe(false);
+  });
+
+  it('reads the flag when it is set', () => {
+    expect(loadEnv({ TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true);
+    expect(loadEnv({ TRUST_PROXY: 'false' }).TRUST_PROXY).toBe(false);
+  });
+
+  it('rejects a value that is neither, rather than guessing', () => {
+    expect(() => loadEnv({ TRUST_PROXY: 'yes' })).toThrow(/TRUST_PROXY/);
+  });
+});

@@ -47,6 +47,19 @@ const envSchema = z
     GEMINI_MODEL: z.string().min(1).default('gemini-flash-latest'),
 
     AI_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
+
+    /**
+     * Whether `x-forwarded-for` may be believed.
+     *
+     * Off by default, because the header is trivially forged by anyone talking
+     * to the process directly, and the rate limiter keys on it. Turn it on only
+     * where a proxy you control overwrites the header on every request —
+     * Vercel does. See `middleware/rate-limit.ts`.
+     */
+    TRUST_PROXY: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
   })
   .superRefine((value, ctx) => {
     if (value.DATA_SOURCE === 'postgres' && !value.DATABASE_URL) {
@@ -54,6 +67,28 @@ const envSchema = z
         code: 'custom',
         path: ['DATABASE_URL'],
         message: 'DATABASE_URL is required when DATA_SOURCE is "postgres".',
+      });
+    }
+
+    /**
+     * The in-memory adapter is a real persistence layer, but only for a process
+     * that outlives the requests it serves. Production runs as serverless
+     * functions: the store lives inside one ephemeral instance, so a write is
+     * lost at the next cold start and is invisible to every sibling instance in
+     * the meantime.
+     *
+     * That failure is silent — the API answers 201, the row is really there,
+     * and it is gone by the next request. Refusing to boot converts it into the
+     * one thing it is not on its own: something you find out about.
+     */
+    if (value.NODE_ENV === 'production' && value.DATA_SOURCE === 'memory') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['DATA_SOURCE'],
+        message:
+          'DATA_SOURCE "memory" cannot be used in production — the store is per-instance and ' +
+          'does not survive a cold start, so writes would be lost silently. ' +
+          'Set DATA_SOURCE=postgres and provide DATABASE_URL.',
       });
     }
   });

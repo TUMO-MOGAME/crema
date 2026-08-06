@@ -41,7 +41,15 @@ export default defineConfig({
     {
       command: 'npm run build -w @crema/backend && node backend/dist/server.js',
       url: `${API}/api/health`,
-      env: { PORT: '3100', CORS_ORIGIN: WEB, NODE_ENV: 'production' },
+      // `NODE_ENV=test`, not `production`, and the distinction is load-bearing:
+      // the env loader refuses to boot a production process on the in-memory
+      // adapter, because a serverless deployment would lose every write at the
+      // next cold start. This suite wants exactly that adapter, seeded, and it
+      // is a test run rather than a deployment — so it says so.
+      //
+      // What makes this end-to-end is the *build*, not the value of NODE_ENV:
+      // both sides are built with `npm run build` and served from `dist`.
+      env: { PORT: '3100', CORS_ORIGIN: WEB, NODE_ENV: 'test' },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
