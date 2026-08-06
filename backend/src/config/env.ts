@@ -30,6 +30,15 @@ const envSchema = z
     DATABASE_URL: z.string().optional(),
 
     /**
+     * Requests per minute per caller, across the whole API.
+     *
+     * Generous on purpose: it exists to stop a runaway client, not to shape
+     * traffic. See `middleware/rate-limit.ts` for why it is a courtesy limit
+     * rather than a guarantee.
+     */
+    RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
+
+    /**
      * Absent by design in most environments. Every AI surface degrades to a
      * clean 503 without it, and the rest of the app is unaffected.
      */

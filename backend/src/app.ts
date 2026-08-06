@@ -4,9 +4,12 @@ import { requestId } from 'hono/request-id';
 import { secureHeaders } from 'hono/secure-headers';
 import { env } from './config/env';
 import { errorHandler, notFoundHandler } from './middleware/error-handler';
+import { rateLimit } from './middleware/rate-limit';
 import { createBrewRepository, type BrewRepository } from './repositories';
+import { brewMethodRoutes } from './routes/brew-methods';
 import { createBrewRoutes } from './routes/brews';
 import { healthRoutes } from './routes/health';
+import { createStatsRoutes } from './routes/stats';
 import { BrewService } from './services/brew.service';
 import type { AppEnv } from './types';
 
@@ -48,8 +51,16 @@ export function createApp(
     }),
   );
 
+  // After CORS, so a preflight is answered by the CORS middleware and never
+  // spends any of the caller's budget.
+  app.use('/api/*', rateLimit({ limit: env.RATE_LIMIT_PER_MINUTE, windowMs: 60_000 }));
+
+  const brews = new BrewService(dependencies.brews);
+
   app.route('/api', healthRoutes);
-  app.route('/api', createBrewRoutes(new BrewService(dependencies.brews)));
+  app.route('/api', brewMethodRoutes);
+  app.route('/api', createBrewRoutes(brews));
+  app.route('/api', createStatsRoutes(brews));
 
   app.notFound(notFoundHandler);
   app.onError(errorHandler);
