@@ -30,7 +30,7 @@ exactly one place.
 |          |                                                                   |
 | -------- | ----------------------------------------------------------------- |
 | Node     | 24 LTS — pinned in `.nvmrc` and enforced by `engines`             |
-| npm      | 11 or newer                                                       |
+| npm      | **11.16 or newer** — enforced, see below                          |
 | Database | **Not required.** The app runs on an in-memory adapter by default |
 | AI key   | **Not required.** AI features disable themselves when absent      |
 
@@ -294,6 +294,22 @@ changes how the app runs — it stays on the in-memory adapter until
 
 **`npm install` fails on the Node version.** `engines` requires Node 24. Check
 with `node --version`, then `nvm use`.
+
+**`npm install` fails with `EBADENGINE` on the npm version.** The project
+requires npm 11.16 or newer, and `.npmrc` sets `engine-strict=true` so an older
+one refuses rather than proceeding. Fix it with:
+
+```bash
+npm install -g npm@latest
+```
+
+This is enforced rather than suggested because npm 11.6 and npm 11.16 disagree
+about whether `yaml` — an optional peer of `lint-staged` and `vite` — belongs in
+the lockfile. Installing with the older one silently drops it; `npm ci` on the
+newer one then fails with `Missing: yaml@2.9.0 from lock file`. The break shows
+up in CI rather than on the machine that caused it, which is the worst place for
+it to show up. Erroring at install time makes the mismatch impossible instead of
+latent.
 
 **The web app says "Not connected".** The API is not running. Start both with
 `npm run dev`, or check <http://localhost:3000/api/health> directly.
