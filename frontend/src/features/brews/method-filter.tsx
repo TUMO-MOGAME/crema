@@ -30,9 +30,18 @@ export function MethodFilter({ methods, value, onChange }: MethodFilterProps) {
         id="method-filter"
         value={value}
         onChange={(event) => onChange(event.target.value as BrewMethodSlug | '')}
-        className="border-hairline rounded-pill bg-surface text-ink text-body w-full cursor-pointer appearance-none border px-5 py-3 pr-12"
+        className="border-control-edge rounded-pill bg-surface text-ink text-body w-full cursor-pointer appearance-none border px-5 py-3 pr-12"
       >
-        <option value="">Filter by method</option>
+        {/*
+          "All methods", not "Filter by method".
+
+          The empty option used to repeat the label, which read as the control
+          announcing itself twice to a screen reader and, once a filter was set,
+          offered a way back that named the control rather than the state it
+          would return to. This also matches what the empty state calls the same
+          action — "Show all methods" — so the two are recognisably one idea.
+        */}
+        <option value="">All methods</option>
         {methods.map((method) => (
           <option key={method.slug} value={method.slug}>
             {method.label}

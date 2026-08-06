@@ -45,8 +45,16 @@
    *
    * Deep rather than bright: a pink-leaning red on a warm dark page reads as
    * decoration, and the only control wearing it deletes things.
+   *
+   * Three steps rather than two, because the red does two jobs with different
+   * contrast requirements and one value could not do both. As *text* it needs
+   * 4.5:1 against the page; as a *button fill* it needs to leave 4.5:1 for the
+   * label on top of it. Those pull in opposite directions — the single
+   * `ember-400` used before measured 3.92:1 as error text and left only 4.33:1
+   * under the Delete label, so it missed both.
    */
-  --color-ember-400: oklch(0.58 0.2 27);
+  --color-ember-400: oklch(0.62 0.19 27);
+  --color-ember-500: oklch(0.55 0.19 27);
   --color-ember-600: oklch(0.5 0.21 27);
 
   /**
@@ -101,15 +109,29 @@
     --ui-raised: var(--color-bean-900);
     --ui-sunken: oklch(0.11 0.02 43);
     --ui-hairline: var(--color-bean-800);
+
+    /**
+     * The edge of a control, as distinct from the line between two rows.
+     *
+     * A hairline between list items is decoration and may be as quiet as it
+     * likes. The border of an input or a select is the only thing saying a
+     * control is there — the method filter sits on the page background and has
+     * the same fill, so without its border there is nothing to see. WCAG asks
+     * 3:1 for that, and the hairline measured 1.31:1.
+     */
+    --ui-control-edge: oklch(0.5 0.04 45);
+
     --ui-ink: var(--color-bean-100);
     --ui-ink-strong: var(--color-bean-50);
     --ui-ink-muted: var(--color-bean-400);
     --ui-accent: var(--color-crema-400);
     --ui-accent-ink: var(--color-bean-950);
+
+    /* The red as text. Must clear 4.5:1 on both surface and raised. */
     --ui-danger: var(--color-ember-400);
-    /* Light on the red in both themes — the wireframe's Delete button, and the
-       only pairing that keeps contrast once the red is deep enough to be read
-       as a warning rather than as an accent. */
+    /* The red as a fill, deep enough to leave 4.5:1 for the label on it. */
+    --ui-danger-surface: var(--color-ember-500);
+    /* Light on the red in both themes — the wireframe's Delete button. */
     --ui-danger-ink: var(--color-bean-50);
 
     /**
@@ -122,6 +144,13 @@
      * and lightness both climb, so the ramp survives greyscale — and the badge
      * carries the number and a proportional arc as well, so colour is never
      * the only thing saying it.
+     *
+     * These values colour the *arc*, not the number. The number used to wear
+     * them too, and at a rating of 1 that put 18px text at 4.09:1 here and
+     * 2.65:1 in the light theme — a legibility floor set by whichever rating
+     * the brew happened to get. The number is now `ink-strong` in both themes
+     * and the ramp is free to be a ramp; as a graphical object it answers to
+     * 3:1, which every step below clears.
      */
     --ui-extraction-1: oklch(0.55 0.02 60);
     --ui-extraction-2: oklch(0.61 0.06 64);
@@ -139,20 +168,25 @@
       --ui-raised: oklch(1 0 0);
       --ui-sunken: var(--color-bean-100);
       --ui-hairline: var(--color-bean-200);
+      --ui-control-edge: oklch(0.6 0.03 60);
       --ui-ink: var(--color-bean-900);
       --ui-ink-strong: var(--color-bean-950);
       --ui-ink-muted: var(--color-bean-500);
       --ui-accent: var(--color-crema-700);
       --ui-accent-ink: var(--color-bean-50);
       --ui-danger: var(--color-ember-600);
+      --ui-danger-surface: var(--color-ember-600);
       --ui-danger-ink: var(--color-bean-50);
 
-      /* Darkened so the ramp keeps its contrast against a pale page. */
-      --ui-extraction-1: oklch(0.68 0.02 60);
-      --ui-extraction-2: oklch(0.63 0.07 64);
-      --ui-extraction-3: oklch(0.58 0.11 66);
-      --ui-extraction-4: oklch(0.53 0.13 64);
-      --ui-extraction-5: oklch(0.47 0.14 62);
+      /* Darkened so the ramp keeps its contrast against a pale page. The
+         previous values claimed to do this and did not: a rating of 1 sat at
+         2.65:1 and a 2 at 3.25:1, both below the 3:1 a graphical object needs.
+         These descend evenly and the lowest clears 3.3:1. */
+      --ui-extraction-1: oklch(0.62 0.02 60);
+      --ui-extraction-2: oklch(0.58 0.07 64);
+      --ui-extraction-3: oklch(0.54 0.11 66);
+      --ui-extraction-4: oklch(0.5 0.13 64);
+      --ui-extraction-5: oklch(0.46 0.14 62);
     }
   }
 
@@ -164,19 +198,21 @@
     --ui-raised: oklch(1 0 0);
     --ui-sunken: var(--color-bean-100);
     --ui-hairline: var(--color-bean-200);
+    --ui-control-edge: oklch(0.6 0.03 60);
     --ui-ink: var(--color-bean-900);
     --ui-ink-strong: var(--color-bean-950);
     --ui-ink-muted: var(--color-bean-500);
     --ui-accent: var(--color-crema-700);
     --ui-accent-ink: var(--color-bean-50);
     --ui-danger: var(--color-ember-600);
+    --ui-danger-surface: var(--color-ember-600);
     --ui-danger-ink: var(--color-bean-50);
 
-    --ui-extraction-1: oklch(0.68 0.02 60);
-    --ui-extraction-2: oklch(0.63 0.07 64);
-    --ui-extraction-3: oklch(0.58 0.11 66);
-    --ui-extraction-4: oklch(0.53 0.13 64);
-    --ui-extraction-5: oklch(0.47 0.14 62);
+    --ui-extraction-1: oklch(0.62 0.02 60);
+    --ui-extraction-2: oklch(0.58 0.07 64);
+    --ui-extraction-3: oklch(0.54 0.11 66);
+    --ui-extraction-4: oklch(0.5 0.13 64);
+    --ui-extraction-5: oklch(0.46 0.14 62);
   }
 }
 
@@ -193,12 +229,14 @@
   --color-raised: var(--ui-raised);
   --color-sunken: var(--ui-sunken);
   --color-hairline: var(--ui-hairline);
+  --color-control-edge: var(--ui-control-edge);
   --color-ink: var(--ui-ink);
   --color-ink-strong: var(--ui-ink-strong);
   --color-ink-muted: var(--ui-ink-muted);
   --color-accent: var(--ui-accent);
   --color-accent-ink: var(--ui-accent-ink);
   --color-danger: var(--ui-danger);
+  --color-danger-surface: var(--ui-danger-surface);
   --color-danger-ink: var(--ui-danger-ink);
 }
 
