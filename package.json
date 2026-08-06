@@ -35,6 +35,23 @@
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage",
     "prepare": "husky"
   },
+  "//known-advisory": [
+    "GHSA-g7r4-m6w7-qqqr (low): esbuild 0.27.3-0.28.0 lets any website read files",
+    "through the dev server's origin check, on Windows only. It reaches this tree",
+    "through tsup, which pins esbuild to ^0.27.0 and so cannot resolve the patched",
+    "0.28.1. vite and tsx are already clear of it.",
+    "",
+    "Not overridden, and the reason is worth stating. Forcing the resolution means",
+    "regenerating this lockfile, and regenerating it on Windows drops 62 optional",
+    "platform binaries that only install on Linux and macOS - the rollup and",
+    "napi-rs natives CI needs. `npm ci` on the runner would then fail to find them.",
+    "Trading a development-only advisory for a broken pipeline is a bad trade, and",
+    "it is the same class of lockfile damage .npmrc already guards against.",
+    "",
+    "Unblocked by either: tsup widening its esbuild range, or regenerating this",
+    "lockfile on Linux. Until then `npm audit` reports one low finding and CI gates",
+    "at high, which is the honest state of it rather than a suppressed one."
+  ],
   "lint-staged": {
     "*.{ts,tsx}": [
       "eslint --fix",

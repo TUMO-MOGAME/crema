@@ -142,6 +142,34 @@ every variable, and CI runs `gitleaks` across the **full history** on every push
 Anything behind Vite's `VITE_` prefix is compiled into the client bundle and is
 treated as public by definition.
 
+### What v1 does not protect
+
+There is no authentication, and that is a deliberate scope decision rather than
+an omission — but it has a consequence worth stating plainly rather than leaving
+to be discovered.
+
+**Every brew is readable, editable and deletable by anyone who can reach the
+API.** There are no accounts, so there is no such thing as another user's data
+to leak; there is also nothing stopping a stranger from emptying the log. The
+schema is ready for accounts — `brews.user_id`, the `profiles` table, and row
+level security policies on every table in
+[`0007_rls.sql`](./supabase/migrations/0007_rls.sql) — but none of it is
+load-bearing yet, because the API connects with a role that bypasses RLS.
+
+What does exist is damage control rather than access control:
+
+| Control               | What it stops                                       |
+| --------------------- | --------------------------------------------------- |
+| Per-caller rate limit | A runaway client or a retry storm                   |
+| 16 KB body limit      | A single request exhausting a function's memory     |
+| CORS allowlist        | A browser on another origin calling the API for you |
+| Strict schemas        | Unknown fields, mass assignment, malformed input    |
+
+So: **do not put a public deployment of v1 in front of data you would mind
+losing.** Either keep the deployment private — Vercel's password protection is
+enough — or wait for Supabase Auth, which is what turns the auth-ready schema
+above into real accounts.
+
 ## Quality gates
 
 Nine CI stages run on every push and pull request. Eight in parallel, plus an
