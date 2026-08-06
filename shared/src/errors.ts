@@ -7,6 +7,7 @@
 
 export const ERROR_CODES = [
   'VALIDATION_FAILED',
+  'SEMANTIC_INVALID',
   'NOT_FOUND',
   'METHOD_NOT_ALLOWED',
   'RATE_LIMITED',
@@ -27,7 +28,7 @@ export interface ApiErrorBody {
   error: {
     code: ErrorCode;
     message: string;
-    /** Present only for `VALIDATION_FAILED`. */
+    /** Present for the two codes that blame a field: validation and semantic. */
     details?: FieldError[];
     /** Correlates a client-side failure with a server log line. */
     requestId: string;
@@ -37,6 +38,14 @@ export interface ApiErrorBody {
 /** Maps an error code to the status code the API responds with. */
 export const ERROR_STATUS: Record<ErrorCode, number> = {
   VALIDATION_FAILED: 400,
+  /**
+   * 422, not 400. The body was well-formed and every field was individually
+   * valid — what failed was a rule about the fields *together*, or about the
+   * world: 400 grams of coffee and 300 of water is two valid numbers and not a
+   * brew. Splitting the two lets the client tell "you typed it wrong" apart
+   * from "that is not a thing that can happen".
+   */
+  SEMANTIC_INVALID: 422,
   NOT_FOUND: 404,
   METHOD_NOT_ALLOWED: 405,
   RATE_LIMITED: 429,
