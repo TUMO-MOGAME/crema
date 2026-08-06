@@ -1,8 +1,20 @@
-import type { Brew, CreateBrewInput, UpdateBrewInput } from '@crema/shared';
+import {
+  brewMethodLabel,
+  BREW_METHOD_SLUGS,
+  EMPTY_BREW_STATS,
+  type Brew,
+  type BrewMethodSlug,
+  type BrewMethodStats,
+  type BrewStats,
+  type CreateBrewInput,
+  type UpdateBrewInput,
+} from '@crema/shared';
 import { randomUUID } from 'node:crypto';
 import {
+  roundTo,
   toIsoInstant,
   toStoredGrams,
+  toStoredRatio,
   type BrewFilter,
   type BrewRepository,
 } from './brew.repository';
@@ -81,6 +93,38 @@ export class InMemoryBrewRepository implements BrewRepository {
     return Promise.resolve(true);
   }
 
+  /**
+   * The same aggregates `brew_stats` and `brew_stats_by_method` produce.
+   *
+   * Written to match the SQL rather than to be idiomatic JavaScript: ratios
+   * come from `toStoredRatio` because Postgres averages the stored generated
+   * column, and each aggregate is rounded to the same number of decimals the
+   * view rounds it to. Getting either wrong would show up as a stats panel
+   * whose numbers changed when the storage adapter did.
+   */
+  stats(): Promise<BrewStats> {
+    const live = [...this.brews.values()].filter((brew) => brew.deletedAt === null);
+
+    if (live.length === 0) return Promise.resolve({ ...EMPTY_BREW_STATS, byMethod: [] });
+
+    const ratios = live.map((brew) => toStoredRatio(brew.coffeeGrams, brew.waterGrams));
+    const brewedAt = live.map((brew) => Date.parse(brew.brewedAt));
+
+    const byMethod = [...groupByMethod(live).entries()]
+      .map(([method, brews]) => methodStats(method, brews))
+      .sort(byBrewCountThenDisplayOrder);
+
+    return Promise.resolve({
+      brewCount: live.length,
+      averageRating: roundTo(mean(live.map((brew) => brew.rating)), 2),
+      averageRatio: roundTo(mean(ratios), 1),
+      methodsUsed: byMethod.length,
+      firstBrewedAt: new Date(Math.min(...brewedAt)).toISOString(),
+      lastBrewedAt: new Date(Math.max(...brewedAt)).toISOString(),
+      byMethod,
+    });
+  }
+
   private insert(input: CreateBrewInput): StoredBrew {
     const now = new Date().toISOString();
 
@@ -126,6 +170,54 @@ function byMostRecentlyBrewed(a: StoredBrew, b: StoredBrew): number {
     Date.parse(b.brewedAt) - Date.parse(a.brewedAt) ||
     Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
     a.id.localeCompare(b.id)
+  );
+}
+
+function mean(values: number[]): number {
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+function groupByMethod(brews: StoredBrew[]): Map<BrewMethodSlug, StoredBrew[]> {
+  const grouped = new Map<BrewMethodSlug, StoredBrew[]>();
+
+  for (const brew of brews) {
+    const existing = grouped.get(brew.method);
+    if (existing) existing.push(brew);
+    else grouped.set(brew.method, [brew]);
+  }
+
+  return grouped;
+}
+
+function methodStats(method: BrewMethodSlug, brews: StoredBrew[]): BrewMethodStats {
+  const ratios = brews.map((brew) => toStoredRatio(brew.coffeeGrams, brew.waterGrams));
+
+  return {
+    method,
+    label: brewMethodLabel(method),
+    brewCount: brews.length,
+    averageRating: roundTo(mean(brews.map((brew) => brew.rating)), 2),
+    averageRatio: roundTo(mean(ratios), 1),
+    minRatio: roundTo(Math.min(...ratios), 1),
+    maxRatio: roundTo(Math.max(...ratios), 1),
+    lastBrewedAt: new Date(
+      Math.max(...brews.map((brew) => Date.parse(brew.brewedAt))),
+    ).toISOString(),
+  };
+}
+
+/**
+ * Most-brewed first.
+ *
+ * The tiebreak is the vocabulary's display order rather than anything derived
+ * from the data, so two methods with the same count appear in the order the
+ * filter dropdown lists them instead of an order that changes as brews are
+ * added.
+ */
+function byBrewCountThenDisplayOrder(a: BrewMethodStats, b: BrewMethodStats): number {
+  return (
+    b.brewCount - a.brewCount ||
+    BREW_METHOD_SLUGS.indexOf(a.method) - BREW_METHOD_SLUGS.indexOf(b.method)
   );
 }
 

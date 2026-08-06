@@ -1,4 +1,4 @@
-import { brewSchema, type CreateBrewInput } from '@crema/shared';
+import { brewSchema, brewStatsSchema, EMPTY_BREW_STATS, type CreateBrewInput } from '@crema/shared';
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { BrewRepository } from './brew.repository';
@@ -311,6 +311,135 @@ export function describeBrewRepositoryContract(
         await repository.softDelete(removed.id);
 
         await expect(repository.findById(kept.id)).resolves.not.toBeNull();
+      });
+    });
+
+    describe('stats', () => {
+      /**
+       * Numbers chosen to divide cleanly. Postgres averages `numeric` exactly
+       * and JavaScript averages in binary floating point, so a value sitting on
+       * a rounding boundary could round in different directions in the two
+       * adapters. That is a real difference and worth knowing about, but a
+       * contract test that fails on the seventeenth decimal place teaches
+       * people to re-run CI rather than to read failures.
+       */
+      const ratioLadder = [
+        { method: 'v60', coffeeGrams: 18, waterGrams: 288, rating: 5 }, // 1:16
+        { method: 'v60', coffeeGrams: 18, waterGrams: 252, rating: 3 }, // 1:14
+        { method: 'espresso', coffeeGrams: 18, waterGrams: 36, rating: 4 }, // 1:2
+      ] as const;
+
+      async function givenTheLadder(): Promise<void> {
+        for (const [index, brew] of ratioLadder.entries()) {
+          await repository.create(aBrew({ ...brew, brewedAt: daysAgo(index + 1) }));
+        }
+      }
+
+      it('answers an empty log with zeroes rather than nothing', async () => {
+        await expect(repository.stats()).resolves.toEqual(EMPTY_BREW_STATS);
+      });
+
+      it('returns stats the shared contract accepts', async () => {
+        await givenTheLadder();
+        const stats = await repository.stats();
+
+        expect(() => brewStatsSchema.parse(stats)).not.toThrow();
+      });
+
+      it('counts the live brews', async () => {
+        await givenTheLadder();
+
+        await expect(repository.stats()).resolves.toMatchObject({
+          brewCount: 3,
+          methodsUsed: 2,
+        });
+      });
+
+      it('averages the rating to two decimals, as the view does', async () => {
+        await givenTheLadder();
+
+        // (5 + 3 + 4) / 3 = 4
+        expect((await repository.stats()).averageRating).toBe(4);
+      });
+
+      it('averages the ratio to one decimal, as the view does', async () => {
+        await givenTheLadder();
+
+        // (16 + 14 + 2) / 3 = 10.666..., to one decimal
+        expect((await repository.stats()).averageRatio).toBe(10.7);
+      });
+
+      it('reports the first and last brew dates', async () => {
+        await givenTheLadder();
+
+        const stats = await repository.stats();
+
+        expect(stats.lastBrewedAt).not.toBeNull();
+        expect(stats.firstBrewedAt).not.toBeNull();
+        expect(Date.parse(stats.lastBrewedAt ?? '')).toBeGreaterThan(
+          Date.parse(stats.firstBrewedAt ?? ''),
+        );
+      });
+
+      it('breaks the numbers down by method', async () => {
+        await givenTheLadder();
+
+        const v60 = (await repository.stats()).byMethod.find((row) => row.method === 'v60');
+
+        expect(v60).toMatchObject({
+          method: 'v60',
+          label: 'V60',
+          brewCount: 2,
+          averageRating: 4,
+          averageRatio: 15,
+          minRatio: 14,
+          maxRatio: 16,
+        });
+      });
+
+      it('puts the most-brewed method first', async () => {
+        await givenTheLadder();
+
+        const stats = await repository.stats();
+
+        expect(stats.byMethod.map((row) => row.method)).toEqual(['v60', 'espresso']);
+      });
+
+      it('leaves out methods with no brews, rather than listing them as zero', async () => {
+        await givenTheLadder();
+
+        const methods = (await repository.stats()).byMethod.map((row) => row.method);
+
+        expect(methods).not.toContain('chemex');
+      });
+
+      it('ignores deleted brews', async () => {
+        const kept = await repository.create(aBrew({ rating: 5 }));
+        const removed = await repository.create(aBrew({ rating: 1, method: 'chemex' }));
+
+        await repository.softDelete(removed.id);
+        const stats = await repository.stats();
+
+        expect(stats.brewCount).toBe(1);
+        expect(stats.methodsUsed).toBe(1);
+        expect(stats.averageRating).toBe(5);
+        expect(stats.byMethod).toHaveLength(1);
+        expect(stats.byMethod[0]?.method).toBe(kept.method);
+      });
+
+      it('goes back to the empty answer when the last brew is deleted', async () => {
+        const only = await repository.create(aBrew());
+        await repository.softDelete(only.id);
+
+        await expect(repository.stats()).resolves.toEqual(EMPTY_BREW_STATS);
+      });
+
+      it('follows an update, rather than reporting what was first written', async () => {
+        const created = await repository.create(aBrew({ rating: 1 }));
+
+        await repository.update(created.id, { rating: 5 });
+
+        expect((await repository.stats()).averageRating).toBe(5);
       });
     });
 

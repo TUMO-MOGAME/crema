@@ -1,7 +1,12 @@
 import {
+  brewMethodLabel,
+  BREW_METHOD_SLUGS,
+  EMPTY_BREW_STATS,
   isBrewMethodSlug,
   type Brew,
   type BrewMethodSlug,
+  type BrewMethodStats,
+  type BrewStats,
   type CreateBrewInput,
   type UpdateBrewInput,
 } from '@crema/shared';
@@ -136,6 +141,50 @@ export class DrizzleBrewRepository implements BrewRepository {
   }
 
   /**
+   * Read from `brew_stats` and `brew_stats_by_method`, not recomputed here.
+   *
+   * The views exist precisely so this is one round trip of aggregation the
+   * database is good at, rather than every brew crossing the wire to be added
+   * up in JavaScript. They already exclude soft-deleted rows and already round
+   * each aggregate; the in-memory adapter matches them, not the other way
+   * round.
+   *
+   * Both views group by `user_id`, and in v1 every brew has none — so there is
+   * exactly one group. When authentication lands this filters by the caller's
+   * id, which is the same change the rest of the interface needs.
+   */
+  async stats(): Promise<BrewStats> {
+    const [totals] = await this.db.execute<StatsRow>(
+      sql`select brew_count, average_rating, average_ratio, methods_used,
+                 first_brewed_at, last_brewed_at
+          from public.brew_stats`,
+    );
+
+    if (!totals) return { ...EMPTY_BREW_STATS, byMethod: [] };
+
+    const rows = await this.db.execute<MethodStatsRow>(
+      sql`select method_slug, brew_count, average_rating, average_ratio,
+                 min_ratio, max_ratio, last_brewed_at
+          from public.brew_stats_by_method`,
+    );
+
+    const byMethod = rows
+      .filter((row) => isBrewMethodSlug(row.method_slug))
+      .map((row) => toMethodStats(row))
+      .sort(byBrewCountThenDisplayOrder);
+
+    return {
+      brewCount: Number(totals.brew_count),
+      averageRating: numeric(totals.average_rating),
+      averageRatio: numeric(totals.average_ratio),
+      methodsUsed: Number(totals.methods_used),
+      firstBrewedAt: totals.first_brewed_at === null ? null : toIsoInstant(totals.first_brewed_at),
+      lastBrewedAt: totals.last_brewed_at === null ? null : toIsoInstant(totals.last_brewed_at),
+      byMethod,
+    };
+  }
+
+  /**
    * The method vocabulary, read once per instance.
    *
    * It is reference data that only a migration can change, so re-reading it on
@@ -177,6 +226,61 @@ export class DrizzleBrewRepository implements BrewRepository {
 interface MethodLookup {
   idBySlug: ReadonlyMap<BrewMethodSlug, number>;
   slugById: ReadonlyMap<number, BrewMethodSlug>;
+}
+
+/**
+ * The view rows, as the driver hands them over.
+ *
+ * `numeric` arrives as a string — postgres.js will not silently narrow an
+ * arbitrary-precision number into a float64 — so every aggregate is converted
+ * explicitly. `Record<string, unknown>` because `db.execute` needs a row type
+ * with an index signature.
+ */
+interface StatsRow extends Record<string, unknown> {
+  brew_count: string;
+  average_rating: string | null;
+  average_ratio: string | null;
+  methods_used: string;
+  first_brewed_at: string | Date | null;
+  last_brewed_at: string | Date | null;
+}
+
+interface MethodStatsRow extends Record<string, unknown> {
+  method_slug: string;
+  brew_count: string;
+  average_rating: string;
+  average_ratio: string;
+  min_ratio: string;
+  max_ratio: string;
+  last_brewed_at: string | Date;
+}
+
+function numeric(value: string | null): number | null {
+  return value === null ? null : Number(value);
+}
+
+function toMethodStats(row: MethodStatsRow): BrewMethodStats {
+  // Narrowed by the `isBrewMethodSlug` filter before this is reached.
+  const method = row.method_slug as BrewMethodSlug;
+
+  return {
+    method,
+    label: brewMethodLabel(method),
+    brewCount: Number(row.brew_count),
+    averageRating: Number(row.average_rating),
+    averageRatio: Number(row.average_ratio),
+    minRatio: Number(row.min_ratio),
+    maxRatio: Number(row.max_ratio),
+    lastBrewedAt: toIsoInstant(row.last_brewed_at),
+  };
+}
+
+/** Most-brewed first, ties broken by the vocabulary's display order. */
+function byBrewCountThenDisplayOrder(a: BrewMethodStats, b: BrewMethodStats): number {
+  return (
+    b.brewCount - a.brewCount ||
+    BREW_METHOD_SLUGS.indexOf(a.method) - BREW_METHOD_SLUGS.indexOf(b.method)
+  );
 }
 
 /**

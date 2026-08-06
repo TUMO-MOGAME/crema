@@ -1,4 +1,4 @@
-import type { Brew, BrewQuery, CreateBrewInput, UpdateBrewInput } from '@crema/shared';
+import type { Brew, BrewQuery, BrewStats, CreateBrewInput, UpdateBrewInput } from '@crema/shared';
 import { AppError } from '../lib/app-error';
 import type { BrewRepository } from '../repositories/brew.repository';
 
@@ -55,6 +55,15 @@ export class BrewService {
     if (!updated) throw AppError.notFound('Brew', id);
 
     return updated;
+  }
+
+  /**
+   * Straight through to the repository. No rule of its own yet, and the method
+   * exists anyway so the route never reaches past the service to the store —
+   * the day stats gain a rule, there is somewhere for it to go.
+   */
+  stats(): Promise<BrewStats> {
+    return this.repository.stats();
   }
 
   async remove(id: string): Promise<void> {
