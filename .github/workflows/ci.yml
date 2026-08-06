@@ -78,15 +78,48 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  migrations:
-    name: Migration lint
+  database:
+    name: Database
     runs-on: ubuntu-latest
+
+    # A real Postgres, matching the major version Supabase runs. Asserting
+    # against the actual engine is the only way to know the SQL is correct —
+    # constraints, generated columns, triggers and row level security all
+    # behave in ways no amount of reading the file will confirm.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crema
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/crema
+
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      # An applied migration can never be edited, so the checks that matter have
-      # to happen before the file is merged.
-      - run: npm run lint:migrations
+
+      # An applied migration can never be edited, so the cheap checks have to
+      # happen before the file is merged.
+      - name: Lint migrations
+        run: npm run lint:migrations
+
+      - name: Apply migrations and seed
+        run: npm run db:reset
+
+      # Drift guard plus constraint assertions: proves the Drizzle definitions
+      # still match the SQL, and that every CHECK actually rejects what it says
+      # it does. A constraint nobody has seen fire is a comment with syntax.
+      - name: Verify schema and constraints
+        run: npm run test:db
 
   security:
     name: Security
@@ -151,7 +184,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [lint, typecheck, unit, api, migrations, security, build, e2e]
+    needs: [lint, typecheck, unit, api, database, security, build, e2e]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any stage did not succeed
