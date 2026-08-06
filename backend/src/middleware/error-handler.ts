@@ -30,7 +30,7 @@ export function errorHandler(error: Error, c: Context): Response {
     );
 
     if (error.code === 'RATE_LIMITED') {
-      response.headers.set('Retry-After', '60');
+      response.headers.set('Retry-After', String(error.retryAfterSeconds ?? 60));
     }
     return response;
   }

@@ -12,6 +12,9 @@ export class AppError extends Error {
   readonly status: number;
   readonly details: FieldError[] | undefined;
 
+  /** Seconds until the caller may retry. Set only on `RATE_LIMITED`. */
+  retryAfterSeconds: number | undefined;
+
   constructor(code: ErrorCode, message: string, details?: FieldError[]) {
     super(message);
     this.name = 'AppError';
@@ -43,10 +46,15 @@ export class AppError extends Error {
   }
 
   static rateLimited(retryAfterSeconds: number): AppError {
-    return new AppError(
+    const error = new AppError(
       'RATE_LIMITED',
       `Too many requests. Try again in ${retryAfterSeconds} seconds.`,
     );
+
+    // Carried on the error rather than assumed by the handler, so the header
+    // and the message can never disagree about how long to wait.
+    error.retryAfterSeconds = retryAfterSeconds;
+    return error;
   }
 
   static aiUnavailable(): AppError {
