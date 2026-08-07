@@ -46,6 +46,17 @@ interface StubOptions {
   writeStatus?: number;
   writeBody?: unknown;
   listStatus?: number;
+
+  /**
+   * Holds every write open until `releaseWrites()` is called.
+   *
+   * Optimistic updates are only observable in the window between the request
+   * leaving and the response landing. Without a way to hold that window open, a
+   * test asserting "the row appears before the server answers" is really
+   * asserting "the row appears", which a non-optimistic implementation also
+   * satisfies — it would pass against the code this replaced.
+   */
+  holdWrites?: boolean;
 }
 
 /**
@@ -61,8 +72,17 @@ export function stubApi({
   writeStatus = 200,
   writeBody,
   listStatus = 200,
+  holdWrites = false,
 }: StubOptions = {}) {
   const calls: { url: string; method: string; body: unknown }[] = [];
+
+  // Resolved by `releaseWrites()`. Every held write awaits this same promise,
+  // so one call lets all of them through.
+  // Replaced by the promise executor below, which runs synchronously.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
 
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = requestUrl(input);
@@ -108,14 +128,17 @@ export function stubApi({
         });
       }
 
-      if (method === 'DELETE') return json(null, writeStatus === 200 ? 204 : writeStatus);
+      const answer =
+        method === 'DELETE'
+          ? json(null, writeStatus === 200 ? 204 : writeStatus)
+          : json(writeBody ?? aBrew(body as Partial<Brew>), writeStatus === 200 ? 201 : writeStatus); // prettier-ignore
 
-      return json(writeBody ?? aBrew(body as Partial<Brew>), writeStatus === 200 ? 201 : writeStatus); // prettier-ignore
+      return holdWrites ? held.then(() => answer) : answer;
     }
 
     return json({}, 404);
   });
 
   vi.stubGlobal('fetch', fetchMock);
-  return { calls, fetchMock };
+  return { calls, fetchMock, releaseWrites: () => release() };
 }
