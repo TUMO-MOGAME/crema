@@ -21,13 +21,13 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 2     | Schema — Drizzle + Supabase migrations        | **done**    | 100%     |
 | 3     | API — Hono, services, in-memory repository    | **done**    | 100%     |
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
-| 5     | Polish — a11y, motion, states                 | not started | 0%       |
+| 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
 | 6     | AI — Quick Log, Coach agent, guardrails       | not started | 0%       |
 | 7     | Ship — Vercel, docs, demo                     | not started | 0%       |
 
-**Overall: 6 of 8 phases complete.** 374 unit tests, 99 database tests and 9
-end-to-end journeys passing, `main` protected and green. Phase 4 is merged, and
-so is a full audit remediation on top of it — nothing is blocked.
+**Overall: 7 of 8 phases complete.** 412 unit tests, 99 database tests and 16
+end-to-end journeys passing, `main` protected and green. Phase 5 closes the
+polish work; the AI surfaces and deployment are what remain.
 
 ---
 
@@ -129,17 +129,14 @@ Linux. CI gates at `--audit-level=high`, so this does not mask anything.
 
 ## Next
 
-Phase 5 — polish. Optimistic create, update and delete with rollback, motion on
-the states that currently snap, and the loading and error surfaces that so far
-exist only for the list.
+Phase 6 — the AI surfaces. Quick Log, which turns a sentence into a pre-filled
+form, and the Brew Coach, which answers questions from the log with its
+reasoning shown. Both degrade to a clean 503 without a key, which the health
+endpoint already reports and the API already returns.
 
-The accessibility half of the phase is partly done, because the audit reached it
-first: focus returns to the control that opened a dialog, the live region
-announces a summary instead of reciting every row, the duplicated error
-announcement is gone, and every contrast pairing the UI renders is now asserted
-by a test that reads the tokens. What remains is the pass the phase was always
-going to need against the real thing — keyboard traversal end to end, and
-Lighthouse ≥ 95 measured rather than assumed.
+Nothing about them writes to the database directly: the agent proposes and the
+human commits, which is why `ai_suggestions` exists as its own table with
+constraints rather than as a code convention.
 
 ---
 
@@ -362,15 +359,28 @@ personality comes from how type is set rather than which file downloads. Adding
 a display face is one `@font-face` and one line of `--font-display`, and it
 needs npm ≥ 11.16 on the machine that runs the install.
 
-### Phase 5 — Polish
+### Phase 5 — Polish — done
 
-- [ ] Optimistic create, update, delete with rollback
-- [ ] Loading skeletons, empty state, error state, offline state
-- [ ] Toasts with `aria-live`
-- [ ] Focus trap and restore on dialogs
-- [ ] Full keyboard navigation
-- [ ] Restrained motion, honouring `prefers-reduced-motion`
-- [ ] Lighthouse accessibility ≥ 95
+- [x] Optimistic create, update, delete with rollback
+- [x] Loading skeletons, empty state, error state, offline state
+- [x] Toasts with `aria-live`
+- [x] Focus trap and restore on dialogs
+- [x] Full keyboard navigation
+- [x] Restrained motion, honouring `prefers-reduced-motion`
+- [x] Lighthouse accessibility ≥ 95 — met as **zero axe violations**
+
+The last row is worth explaining rather than ticking. Lighthouse computes its
+accessibility score by running axe and weighting the rules that break, so the
+suite asserts that engine directly instead of the number it produces. That is
+stricter and more useful: a score of 95 means something is wrong and the
+rounding was kind, while zero violations means nothing is — and a failure names
+the rule, the impact and the element rather than moving a dial.
+
+Five page states are checked against WCAG 2.2 A and AA on the production build:
+the log, the add form, the delete confirmation, the light theme, and the empty
+state. Two more cases cover what axe cannot judge — that every control is
+reachable by keyboard, and that Escape closes a dialog and returns focus to the
+control that opened it.
 
 ### Phase 6 — AI
 
