@@ -9,10 +9,11 @@ Built by [Tumo Mogame](https://github.com/TUMO-MOGAME) for the XPL full-stack
 developer bootcamp assessment. The brief is preserved verbatim in
 [docs/assessment-brief.md](./docs/assessment-brief.md).
 
-> **Current state: Phase 0 of 8 — foundation.** The monorepo, contract package,
-> API shell, tooling and quality gates are in place. The brew CRUD feature work
-> begins in Phase 3. [STATUS.md](./STATUS.md) is kept current and is the honest
-> answer to "how far along is this".
+> **Current state: Phase 4 of 8 complete — the brew log works.** Read, filter,
+> add, edit and delete, in light or dark, from 320px up, against a real HTTP
+> API. Phases 5 to 7 — polish, the AI surfaces, and deployment — are still
+> ahead, so there is no live URL yet. [STATUS.md](./STATUS.md) is kept current
+> and is the honest answer to "how far along is this".
 
 ---
 

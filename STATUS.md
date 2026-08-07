@@ -1,7 +1,7 @@
 # Status
 
 **Project:** Crema — Coffee Brew Log **Branch:** `main` **Last updated:**
-2026-08-06
+2026-08-07
 
 Live progress board. Open this file first — it answers "what is done, how far
 along is this, what is next, and what is blocked" without reading any code. The
@@ -25,9 +25,9 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 6     | AI — Quick Log, Coach agent, guardrails       | not started | 0%       |
 | 7     | Ship — Vercel, docs, demo                     | not started | 0%       |
 
-**Overall: 6 of 8 phases complete.** 299 unit tests, 91 database tests and 9
-end-to-end journeys passing, `main` protected and green. Phase 4 is built and
-verified but not yet merged — see [Blocked on](#blocked-on).
+**Overall: 6 of 8 phases complete.** 374 unit tests, 99 database tests and 9
+end-to-end journeys passing, `main` protected and green. Phase 4 is merged, and
+so is a full audit remediation on top of it — nothing is blocked.
 
 ---
 
@@ -38,12 +38,28 @@ and lints clean on a fresh install; every change to the portfolio repository has
 to pass nine CI stages behind a protected branch; and the full Postgres schema
 exists as ordered migrations that CI applies to a real database on every push.
 
-Phase 4 is complete, so the app is now the thing the brief asks for: a brew log
-you can read, filter, add to, edit and delete, in light or dark, from 320px up.
-It talks to the API over real HTTP, and the form is driven by the same Zod
-schema the API validates with — so the rule that a blank field cannot be
-submitted is written once and enforced on both sides. It sits on
-`feat/phase-4-ui` in pull request #6, waiting on a pipeline that can run.
+Phase 4 is complete and merged, so the app is now the thing the brief asks for:
+a brew log you can read, filter, add to, edit and delete, in light or dark, from
+320px up. It talks to the API over real HTTP, and the form is driven by the same
+Zod schema the API validates with — so the rule that a blank field cannot be
+submitted is written once and enforced on both sides.
+
+A full audit of the codebase followed, and its findings are fixed. The list is
+in the update log below; four are worth naming here because they were not
+cosmetic. The env loader now refuses to boot a production process on the
+in-memory adapter — the deploy target is serverless, so every write would have
+been lost at the next cold start with nothing reporting it. `GET /api/brews`
+returns a page rather than every row, and carries the total, so the client no
+longer fetches the whole log a second time purely to count it. The dialog
+returns focus to the control that opened it, which it never did. And six
+contrast pairings that were measured for the first time turned out to fail,
+including the rating dial at 2.65:1 in the light theme.
+
+Two of those fixes had bugs of their own, and both were caught by the suites
+rather than by review: the repository contract suite found the new Postgres
+paging disagreeing with the in-memory adapter about the total on an empty page,
+and the schema drift guard rejected the new migration ledger for living in
+`public` without row level security.
 
 Building it turned up a hole in the pipeline itself. The aggregate `CI` check —
 the single context branch protection requires — reported all nine stages green
@@ -93,38 +109,37 @@ React 19.2, Hono 4.13, Zod 4.4, Playwright 1.62.
 
 ## Blocked on
 
-**Merging Phase 4, on a GitHub Actions outage.** The work is built, reviewed and
-verified; the pipeline cannot schedule the jobs to say so.
+**Nothing.** The GitHub Actions outage that held Phase 4 open is resolved and
+the pipeline is scheduling jobs again. Both pull requests are merged, both
+remotes are at the same commit, and every stage has now run green in CI rather
+than only on one machine — including `Lint and format`, which the outage had
+prevented from executing even once.
 
-GitHub declared an incident on Actions at 15:22 UTC on 2026-08-06, escalated it
-to a major outage, and it was still unresolved at 21:33. Four runs on
-`feat/phase-4-ui` failed without a single test, type error or lint rule being
-involved:
-
-| Symptom                   | What it means                                            |
-| ------------------------- | -------------------------------------------------------- |
-| Job completed **1** step  | Got as far as "Set up job", then could not fetch actions |
-| Job completed **0** steps | Never started — sat queued until the scheduler gave up   |
-
-Every job across those four runs that actually received a runner passed. The
-whole pipeline has therefore been green, just never all within one run, because
-a different stage is hit each time.
-
-One honest gap: `Lint and format` has never once executed in CI here — setup
-failed three times and it was cancelled the fourth. It passes locally on the
-current commit (`eslint .` clean, `prettier --check .` clean), but that is this
-machine's word rather than the pipeline's.
-
-Not merging past it. That gate was just repaired precisely because it let a red
-branch look green, and overriding it on the first inconvenient day would answer
-the question of whether the rule is real.
+One item is deliberately carried rather than fixed, and it is recorded here so
+it is not mistaken for an oversight. `npm audit` reports one low advisory,
+GHSA-g7r4-m6w7-qqqr, in a transitive `esbuild` — a development-server issue on
+Windows only. It arrives through `tsup`, which pins a range that cannot resolve
+the patched version, so clearing it means regenerating the lockfile; doing that
+on Windows drops 62 optional platform binaries that only install on Linux and
+macOS, and `npm ci` on the runner then fails to find them. That is the same
+lockfile damage `.npmrc` exists to prevent, so the advisory stays visible and
+documented in `package.json` instead of being traded for a broken pipeline. It
+clears when `tsup` widens its range, or when the lockfile is regenerated on
+Linux. CI gates at `--audit-level=high`, so this does not mask anything.
 
 ## Next
 
-Phase 5 — polish. Optimistic create, update and delete with rollback, an
-accessibility pass against the real thing rather than against intentions, motion
-on the states that currently snap, and the loading and error surfaces that only
-exist for the list so far.
+Phase 5 — polish. Optimistic create, update and delete with rollback, motion on
+the states that currently snap, and the loading and error surfaces that so far
+exist only for the list.
+
+The accessibility half of the phase is partly done, because the audit reached it
+first: focus returns to the control that opened a dialog, the live region
+announces a summary instead of reciting every row, the duplicated error
+announcement is gone, and every contrast pairing the UI renders is now asserted
+by a test that reads the tokens. What remains is the pass the phase was always
+going to need against the real thing — keyboard traversal end to end, and
+Lighthouse ≥ 95 measured rather than assumed.
 
 ---
 
@@ -432,15 +447,16 @@ needs npm ≥ 11.16 on the machine that runs the install.
 
 ## Update log
 
-| Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-08-05 | Repository audited. Planning and research completed. `PLANNING.md` and `STATUS.md` created.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| 2026-08-05 | All four open decisions settled. Phase 0 unblocked, awaiting go-ahead to scaffold.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 2026-08-05 | Phase 0 built and verified: workspaces, contract package, API shell, frontend shell, tooling, docs. 62 tests green, both workspaces building, API smoke-tested over the wire.                                                                                                                                                                                                                                                                                                                                                                                     |
-| 2026-08-05 | Phase 0 pushed. Public mirror created at `TUMO-MOGAME/crema`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| 2026-08-06 | Phase 2 built. Eight migrations, seed, Drizzle mirror, migration runner, 39 database tests and a drift guard, all verified against a real Postgres 17. CI gained a Database stage. A whitespace-handling mismatch between the SQL constraints and the Zod contract was found and fixed.                                                                                                                                                                                                                                                                           |
-| 2026-08-06 | Phase 1 built. Coverage raised to threshold with real tests for the error paths, 91 unit tests and 7 end-to-end journeys. First CI run failed on a corrupted lockfile missing `yaml` — repaired, and the catch is the argument for `npm ci`. All nine stages green. `main` protected and the gate verified against both a direct push and a failing pull request.                                                                                                                                                                                                 |
-| 2026-08-06 | Phase 3 repository layer and brew CRUD built. `BrewRepository` with a 27-test contract suite both adapters pass, in-memory adapter seeded from the same data as `seed.sql` and guarded against drifting from it, Drizzle adapter written and proven against a real Postgres while staying dormant. 228 unit tests and 79 database tests. The contract suite found three silent differences between the adapters — gram rounding, timestamp offsets, and handing out the stored object instead of a copy.                                                          |
-| 2026-08-06 | Phase 3 finished. `/api/brew-methods`, `/api/stats` over the two aggregate views, and a fixed-window rate limiter with an accurate `Retry-After`. The contract suite grew to 39 tests as the stats arithmetic had to be reproduced exactly by the in-memory adapter. 272 unit tests, 91 database tests, 7 end-to-end journeys.                                                                                                                                                                                                                                    |
-| 2026-08-06 | Phase 4 built. Three-layer design tokens with light and dark themes, the brew list and both wireframe dialogs, delete with confirmation, and a three-state theme toggle. 55 web tests and 9 end-to-end journeys. The rating badge departs from the wireframe's traffic light on purpose — the scale runs pale ash to full crema with a proportional arc, so the value stays legible without colour. Two bugs surfaced in test rather than in the browser: stacked dialogs sharing one title id, and a rejected save escaping as an unhandled promise.             |
-| 2026-08-06 | Phase 4 built and opened as #6, then blocked on a GitHub Actions major outage — four runs failed with jobs completing zero or one step, never a test or a lint rule. The outage exposed a real hole: the aggregate `CI` check passed while `Lint and format` was red, because a job killed by infrastructure reports `abandoned`. The gate now demands `success` from every stage and prints what it saw. Also rewrote eight commit messages to drop attribution trailers, force-pushed both remotes, and restored branch protection to its exact prior settings. |
+| Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-05 | Repository audited. Planning and research completed. `PLANNING.md` and `STATUS.md` created.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 2026-08-05 | All four open decisions settled. Phase 0 unblocked, awaiting go-ahead to scaffold.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 2026-08-05 | Phase 0 built and verified: workspaces, contract package, API shell, frontend shell, tooling, docs. 62 tests green, both workspaces building, API smoke-tested over the wire.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 2026-08-05 | Phase 0 pushed. Public mirror created at `TUMO-MOGAME/crema`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 2026-08-06 | Phase 2 built. Eight migrations, seed, Drizzle mirror, migration runner, 39 database tests and a drift guard, all verified against a real Postgres 17. CI gained a Database stage. A whitespace-handling mismatch between the SQL constraints and the Zod contract was found and fixed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 2026-08-06 | Phase 1 built. Coverage raised to threshold with real tests for the error paths, 91 unit tests and 7 end-to-end journeys. First CI run failed on a corrupted lockfile missing `yaml` — repaired, and the catch is the argument for `npm ci`. All nine stages green. `main` protected and the gate verified against both a direct push and a failing pull request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-08-06 | Phase 3 repository layer and brew CRUD built. `BrewRepository` with a 27-test contract suite both adapters pass, in-memory adapter seeded from the same data as `seed.sql` and guarded against drifting from it, Drizzle adapter written and proven against a real Postgres while staying dormant. 228 unit tests and 79 database tests. The contract suite found three silent differences between the adapters — gram rounding, timestamp offsets, and handing out the stored object instead of a copy.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 2026-08-06 | Phase 3 finished. `/api/brew-methods`, `/api/stats` over the two aggregate views, and a fixed-window rate limiter with an accurate `Retry-After`. The contract suite grew to 39 tests as the stats arithmetic had to be reproduced exactly by the in-memory adapter. 272 unit tests, 91 database tests, 7 end-to-end journeys.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 2026-08-06 | Phase 4 built. Three-layer design tokens with light and dark themes, the brew list and both wireframe dialogs, delete with confirmation, and a three-state theme toggle. 55 web tests and 9 end-to-end journeys. The rating badge departs from the wireframe's traffic light on purpose — the scale runs pale ash to full crema with a proportional arc, so the value stays legible without colour. Two bugs surfaced in test rather than in the browser: stacked dialogs sharing one title id, and a rejected save escaping as an unhandled promise.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-08-06 | Phase 4 built and opened as #6, then blocked on a GitHub Actions major outage — four runs failed with jobs completing zero or one step, never a test or a lint rule. The outage exposed a real hole: the aggregate `CI` check passed while `Lint and format` was red, because a job killed by infrastructure reports `abandoned`. The gate now demands `success` from every stage and prints what it saw. Also rewrote eight commit messages to drop attribution trailers, force-pushed both remotes, and restored branch protection to its exact prior settings.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-08-07 | Phase 4 merged once Actions recovered, then a full codebase audit and its remediation merged on top as #7. Nine commits closing every finding: production refuses the in-memory adapter, the brew list is paged and carries its own total, responses are parsed rather than cast, request bodies are bounded at 16 KB, forwarded headers are only believed behind a trusted proxy, dialogs return focus, six measured contrast failures are fixed behind a test that reads the tokens, migrations are replayable through a ledger, and the contract package's coverage thresholds are actually enforced. 374 unit tests, 99 database tests, 9 end-to-end journeys. Two of the fixes were themselves wrong and the suites said so — the contract suite caught the Postgres adapter reporting a total of zero for a page past the end of the log while the in-memory adapter said three, and the drift guard rejected the new ledger table for sitting in `public` without row level security. One low advisory is carried deliberately rather than fixed; see Blocked on for why. |
