@@ -1,6 +1,7 @@
 import type { Brew, BrewMethodSlug, CreateBrewInput } from '@crema/shared';
 import { useState } from 'react';
 import { Button } from '../../components/button';
+import { OfflineBanner } from '../../components/offline-banner';
 import { ThemeToggle } from '../../components/theme-toggle';
 import { useToast } from '../../components/toast-context';
 import { brewCountTitle, useDocumentTitle } from '../../hooks/use-document-title';
@@ -113,6 +114,8 @@ export function BrewLog() {
 
         <Button onClick={() => setAdding(true)}>Add</Button>
       </header>
+
+      <OfflineBanner />
 
       <MethodFilter methods={methods.data ?? []} value={method} onChange={setMethod} />
 

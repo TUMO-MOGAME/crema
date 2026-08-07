@@ -1,5 +1,5 @@
-import { QueryClient } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { onlineManager, QueryClient } from '@tanstack/react-query';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { aBrew, anId, stubApi } from '../test/brew-fixtures';
@@ -659,5 +659,94 @@ describe('telling the reader what happened', () => {
     await user.click(await screen.findByRole('button', { name: 'Dismiss' }));
 
     expect(screen.getByRole('status', { name: 'Notifications' })).toBeEmptyDOMElement();
+  });
+});
+
+/**
+ * Being offline, and the promise the banner makes about it.
+ *
+ * The copy says changes are kept and sent when the connection returns. That is
+ * a claim about React Query's paused-mutation behaviour combined with the
+ * optimistic update, and it is the kind of reassurance that must not be written
+ * without a test — telling someone their work is safe and being wrong is worse
+ * than saying nothing.
+ */
+describe('working offline', () => {
+  afterEach(() => {
+    onlineManager.setOnline(true);
+  });
+
+  it('says so', async () => {
+    stubApi({ brews: [aBrew()] });
+    renderApp();
+
+    await screen.findByText('Ethiopian Yirgacheffe');
+    act(() => onlineManager.setOnline(false));
+
+    expect(await screen.findByRole('status', { name: 'Connection' })).toHaveTextContent(
+      /you are offline/i,
+    );
+  });
+
+  it('says nothing while the connection is fine', async () => {
+    stubApi({ brews: [aBrew()] });
+    renderApp();
+
+    await screen.findByText('Ethiopian Yirgacheffe');
+
+    expect(screen.queryByRole('status', { name: 'Connection' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a deletion on screen without sending it', async () => {
+    const { calls } = stubApi({ brews: [aBrew(), aBrew({ id: anId(2), beans: 'Kenyan AA' })] });
+    const { user } = renderApp();
+
+    await screen.findByText('Ethiopian Yirgacheffe');
+    act(() => onlineManager.setOnline(false));
+
+    await user.click(screen.getByRole('button', { name: 'Edit Kenyan AA' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Edit a brew' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Delete this brew?' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+
+    // The optimistic removal happened...
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Kenyan AA' })).not.toBeInTheDocument(),
+    );
+    // ...and the request did not.
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+  });
+
+  it('sends it once the connection comes back', async () => {
+    const { calls } = stubApi({ brews: [aBrew(), aBrew({ id: anId(2), beans: 'Kenyan AA' })] });
+    const { user } = renderApp();
+
+    await screen.findByText('Ethiopian Yirgacheffe');
+    act(() => onlineManager.setOnline(false));
+
+    await user.click(screen.getByRole('button', { name: 'Edit Kenyan AA' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Edit a brew' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Delete this brew?' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE')).toBe(false));
+
+    act(() => onlineManager.setOnline(true));
+
+    // This is the sentence in the banner, asserted.
+    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE')).toBe(true));
   });
 });
