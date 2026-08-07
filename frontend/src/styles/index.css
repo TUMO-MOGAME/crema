@@ -350,4 +350,32 @@
   .animate-dialog-in {
     animation: dialog-in var(--duration-quiet) var(--ease-out-quiet);
   }
+
+  /**
+   * The way out, which used to not exist — dialogs arrived and then vanished.
+   *
+   * `forwards` holds the last frame, so the box stays gone for the moment
+   * between the animation ending and the element actually closing. Without it
+   * the dialog snaps back to full opacity for a frame before disappearing.
+   */
+  @keyframes dialog-out {
+    to {
+      opacity: 0;
+      transform: translateY(0.5rem) scale(0.98);
+    }
+  }
+
+  dialog[data-closing] {
+    animation: dialog-out var(--duration-quiet) var(--ease-out-quiet) forwards;
+  }
+
+  dialog[data-closing]::backdrop {
+    animation: backdrop-out var(--duration-quiet) var(--ease-out-quiet) forwards;
+  }
+
+  @keyframes backdrop-out {
+    to {
+      opacity: 0;
+    }
+  }
 }
