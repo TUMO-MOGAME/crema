@@ -2,7 +2,9 @@ import type { Brew, BrewMethodSlug, CreateBrewInput } from '@crema/shared';
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { ThemeToggle } from '../../components/theme-toggle';
+import { useToast } from '../../components/toast-context';
 import { brewCountTitle, useDocumentTitle } from '../../hooks/use-document-title';
+import { ApiError } from '../../lib/api-client';
 import { BrewFormDialog } from './brew-form-dialog';
 import { BrewRow } from './brew-row';
 import { DeleteConfirmDialog } from './delete-confirm-dialog';
@@ -24,6 +26,7 @@ export function BrewLog() {
 
   const brews = useBrews(method || undefined);
   const methods = useBrewMethods();
+  const toast = useToast();
   const create = useCreateBrew();
   const update = useUpdateBrew();
   const remove = useDeleteBrew();
@@ -54,27 +57,46 @@ export function BrewLog() {
    * rendered on the offending field or as a banner. What it prevents is the
    * rejection escaping into an unhandled promise, and the form closing over
    * work the server refused to keep.
+   *
+   * No toast on failure here, because the dialog is still open and already says
+   * what went wrong, on the field that caused it. Two accounts of one failure
+   * is worse than one.
    */
   const save = async (values: CreateBrewInput) => {
+    const editingNow = editing !== null;
+
     try {
-      if (editing) await update.mutateAsync({ id: editing.id, changes: values });
+      if (editing) await update.mutateAsync({ brew: editing, changes: values });
       else await create.mutateAsync(values);
 
       closeForm();
+      toast.show(editingNow ? 'Brew updated.' : 'Brew added.');
     } catch {
       // Left open, with the reason attached to the field that caused it.
     }
   };
 
+  /**
+   * Deleting says something either way, and that is what optimism costs.
+   *
+   * The row leaves the list the moment this is confirmed, before the server has
+   * agreed. If the server then refuses, the rollback puts it back — and a brew
+   * that disappears and returns on its own, with nothing said, reads as a bug
+   * rather than as a save that did not happen.
+   */
   const confirmDelete = async () => {
     if (!deleting) return;
+    const beans = deleting.beans;
 
     try {
       await remove.mutateAsync(deleting);
       setDeleting(null);
       closeForm();
-    } catch {
-      // The confirmation stays up rather than reporting a deletion that failed.
+      toast.show(`${beans} deleted.`);
+    } catch (error) {
+      setDeleting(null);
+      closeForm();
+      toast.show(deleteFailure(error, beans), 'danger');
     }
   };
 
@@ -103,7 +125,7 @@ export function BrewLog() {
         reader needs to hear is what changed and how much of it there now is;
         the rows themselves are there to be navigated, not recited.
       */}
-      <p role="status" aria-live="polite" className="sr-only">
+      <p role="status" aria-live="polite" aria-label="Brew list" className="sr-only">
         {listStatus(brews, method)}
       </p>
 
@@ -167,6 +189,23 @@ export function BrewLog() {
 }
 
 /**
+ * Why a delete did not happen, in the words the reader needs.
+ *
+ * The API's own message is used when there is one — it is written for a person
+ * and is more specific than anything that could be reconstructed here. A brew
+ * already gone is the one case worth rewording, because "not found" describes
+ * the request rather than the situation.
+ */
+function deleteFailure(error: unknown, beans: string): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'NOT_FOUND') return `${beans} was already deleted.`;
+    return `Could not delete ${beans}. ${error.message}`;
+  }
+
+  return `Could not delete ${beans}. Try again.`;
+}
+
+/**
  * What the live region says.
  *
  * One sentence describing the state of the list: loading, broken, empty, or how
@@ -217,7 +256,13 @@ function EmptyState({ method, onClearFilter }: { method: string; onClearFilter: 
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div role="alert" className="border-hairline flex flex-col items-start gap-3 border-t py-16">
+    // Named for the same reason the toast regions are: the page now carries
+    // several live regions, and "the alert" has to mean one of them.
+    <div
+      role="alert"
+      aria-label="Could not load your brews"
+      className="border-hairline flex flex-col items-start gap-3 border-t py-16"
+    >
       <p className="text-ink-strong text-row font-semibold">Could not load your brews.</p>
       <p className="text-ink-muted text-body">{message}</p>
       <Button variant="quiet" onClick={onRetry} className="px-0">

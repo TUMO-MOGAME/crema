@@ -1,6 +1,7 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { useEffect, type ReactNode } from 'react';
 import { BrowserRouter } from 'react-router';
+import { ToastProvider } from '../components/toast';
 import { createQueryClient } from '../lib/query-client';
 import { applyTheme, readTheme } from '../lib/theme';
 
@@ -27,7 +28,11 @@ export function AppProviders({ children, client, router = true }: AppProvidersPr
     applyTheme(readTheme());
   }, []);
 
-  const tree = <QueryClientProvider client={client ?? defaultClient()}>{children}</QueryClientProvider>; // prettier-ignore
+  const tree = (
+    <QueryClientProvider client={client ?? defaultClient()}>
+      <ToastProvider>{children}</ToastProvider>
+    </QueryClientProvider>
+  );
 
   return router ? <BrowserRouter>{tree}</BrowserRouter> : tree;
 }

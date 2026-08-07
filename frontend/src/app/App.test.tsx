@@ -74,7 +74,7 @@ describe('the brew list', () => {
     stubApi({ listStatus: 500 });
     renderApp();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load your brews.');
+    expect(await screen.findByRole('alert', { name: /could not load/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 });
@@ -396,7 +396,7 @@ describe('what a screen reader is told', () => {
 
     await screen.findByText('Ethiopian Yirgacheffe');
 
-    const status = screen.getByRole('status');
+    const status = screen.getByRole('status', { name: 'Brew list' });
     expect(status).toHaveTextContent('2 brews.');
     // The rows are for navigating, not for announcing.
     expect(status).not.toHaveTextContent('Ethiopian Yirgacheffe');
@@ -408,7 +408,11 @@ describe('what a screen reader is told', () => {
     });
     renderApp();
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Showing 50 of 120'));
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'Brew list' })).toHaveTextContent(
+        'Showing 50 of 120',
+      ),
+    );
   });
 
   it('says when a filter matched nothing', async () => {
@@ -419,7 +423,241 @@ describe('what a screen reader is told', () => {
     await user.selectOptions(screen.getByLabelText('Filter by method'), 'chemex');
 
     await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent('No brews logged with this method.'),
+      expect(screen.getByRole('status', { name: 'Brew list' })).toHaveTextContent(
+        'No brews logged with this method.',
+      ),
     );
+  });
+});
+
+/**
+ * Optimistic updates, asserted in the window they exist in.
+ *
+ * Every case here holds the write open, so what is on screen is the guess and
+ * not the answer. Without that these would pass against a plain refetch, which
+ * is the implementation they replaced.
+ */
+describe('changes that land before the server agrees', () => {
+  async function fillNewBrew(user: ReturnType<typeof userEvent.setup>, beans: string) {
+    await user.click(await screen.findByRole('button', { name: 'Add' }));
+    await user.type(screen.getByLabelText('Beans'), beans);
+    await user.selectOptions(screen.getByLabelText('Method'), 'chemex');
+    await user.type(screen.getByLabelText('Coffee grams'), '22');
+    await user.type(screen.getByLabelText('Water grams'), '352');
+    await user.type(screen.getByLabelText('Rating (out of 5)'), '4');
+    await user.type(screen.getByLabelText('Tasting notes'), 'Milk chocolate, orange peel');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+  }
+
+  it('shows a new brew while the request is still open', async () => {
+    stubApi({ brews: [aBrew()], holdWrites: true });
+    const { user } = renderApp();
+
+    await screen.findByText('Ethiopian Yirgacheffe');
+    await fillNewBrew(user, 'Rwandan Nyungwe');
+
+    // The server has not answered and will not until released.
+    expect(await screen.findByText('Rwandan Nyungwe')).toBeInTheDocument();
+  });
+
+  it('counts it immediately too, not just shows it', async () => {
+    stubApi({ brews: [aBrew()], holdWrites: true });
+    const { user } = renderApp();
+
+    await screen.findByText('Ethiopian Yirgacheffe');
+    await waitFor(() => expect(document.title).toBe('Brews: 1'));
+
+    await fillNewBrew(user, 'Rwandan Nyungwe');
+
+    // The count lives on every page of the cache; a patch that updated only
+    // the page it inserted into would leave this at 1.
+    await waitFor(() => expect(document.title).toBe('Brews: 2'));
+  });
+
+  it('takes the brew back off when the server refuses it', async () => {
+    const { releaseWrites } = stubApi({ brews: [aBrew()], holdWrites: true, writeStatus: 500 });
+    const { user } = renderApp();
+
+    await screen.findByText('Ethiopian Yirgacheffe');
+    await fillNewBrew(user, 'Rwandan Nyungwe');
+
+    expect(await screen.findByText('Rwandan Nyungwe')).toBeInTheDocument();
+
+    releaseWrites();
+
+    await waitFor(() => expect(screen.queryByText('Rwandan Nyungwe')).not.toBeInTheDocument());
+    // And the count goes back with it.
+    await waitFor(() => expect(document.title).toBe('Brews: 1'));
+  });
+
+  it('removes a deleted brew before the server confirms', async () => {
+    stubApi({ brews: [aBrew(), aBrew({ id: anId(2), beans: 'Kenyan AA' })], holdWrites: true });
+    const { user } = renderApp();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Kenyan AA' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Edit a brew' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Delete this brew?' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+
+    // Scoped to the row, not the document: the confirmation is still open and
+    // still names the brew, because the request it is waiting on is held.
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Kenyan AA' })).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(document.title).toBe('Brews: 1'));
+  });
+
+  it('puts a deleted brew back when the delete fails', async () => {
+    const { releaseWrites } = stubApi({
+      brews: [aBrew(), aBrew({ id: anId(2), beans: 'Kenyan AA' })],
+      holdWrites: true,
+      writeStatus: 500,
+    });
+    const { user } = renderApp();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Kenyan AA' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Edit a brew' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Delete this brew?' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Kenyan AA' })).not.toBeInTheDocument(),
+    );
+
+    releaseWrites();
+
+    // A brew that is still there has to come back, or the reader is told it is
+    // gone by an interface that never asked the server successfully.
+    expect(await screen.findByRole('heading', { name: 'Kenyan AA' })).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe('Brews: 2'));
+  });
+
+  it('shows an edit before it is saved', async () => {
+    stubApi({ brews: [aBrew()], holdWrites: true });
+    const { user } = renderApp();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Ethiopian Yirgacheffe' }));
+    await user.clear(screen.getByLabelText('Beans'));
+    await user.type(screen.getByLabelText('Beans'), 'Renamed beans');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Renamed beans')).toBeInTheDocument();
+  });
+
+  it('restores the old values when an edit is refused', async () => {
+    const { releaseWrites } = stubApi({ brews: [aBrew()], holdWrites: true, writeStatus: 500 });
+    const { user } = renderApp();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Ethiopian Yirgacheffe' }));
+    await user.clear(screen.getByLabelText('Beans'));
+    await user.type(screen.getByLabelText('Beans'), 'Renamed beans');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByText('Renamed beans');
+
+    releaseWrites();
+
+    expect(await screen.findByText('Ethiopian Yirgacheffe')).toBeInTheDocument();
+    expect(screen.queryByText('Renamed beans')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * What the interface says after the fact.
+ *
+ * Toasts exist here because optimism needs them: a change that was applied and
+ * then undone has to account for itself, or a row appears to vanish and return
+ * on its own.
+ */
+describe('telling the reader what happened', () => {
+  /** Opens the edit dialog for the seeded brew and confirms the delete. */
+  async function deleteTheBrew(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: 'Edit Ethiopian Yirgacheffe' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Edit a brew' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Delete this brew?' })).getByRole('button', {
+        name: 'Delete',
+      }),
+    );
+  }
+
+  it('confirms a brew was added', async () => {
+    stubApi({ brews: [] });
+    const { user } = renderApp();
+
+    await user.click(await screen.findByRole('button', { name: 'Add' }));
+    await user.type(screen.getByLabelText('Beans'), 'Kenyan AA');
+    await user.selectOptions(screen.getByLabelText('Method'), 'chemex');
+    await user.type(screen.getByLabelText('Coffee grams'), '22');
+    await user.type(screen.getByLabelText('Water grams'), '352');
+    await user.type(screen.getByLabelText('Rating (out of 5)'), '4');
+    await user.type(screen.getByLabelText('Tasting notes'), 'Milk chocolate');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    const notifications = screen.getByRole('status', { name: 'Notifications' });
+    await waitFor(() => expect(notifications).toHaveTextContent('Brew added.'));
+  });
+
+  it('says nothing in a toast when the form already said it', async () => {
+    // A field error is rendered on the field. Repeating it in a toast would be
+    // one failure described twice, in two places, at the same moment.
+    stubApi({ brews: [] });
+    const { user } = renderApp();
+
+    await user.click(await screen.findByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByText('Beans is required');
+    expect(screen.getByRole('status', { name: 'Notifications' })).toBeEmptyDOMElement();
+  });
+
+  it('explains a delete that failed, in the assertive region', async () => {
+    stubApi({ brews: [aBrew()], writeStatus: 500 });
+    const { user } = renderApp();
+
+    await deleteTheBrew(user);
+
+    // Assertive, not polite: the row just came back on screen and the reader
+    // needs to know why before they try again.
+    const errors = screen.getByRole('alert', { name: 'Errors' });
+    await waitFor(() => expect(errors).toHaveTextContent(/could not delete/i));
+  });
+
+  it('names the brew it is talking about', async () => {
+    stubApi({ brews: [aBrew()] });
+    const { user } = renderApp();
+
+    await deleteTheBrew(user);
+
+    const notifications = screen.getByRole('status', { name: 'Notifications' });
+    await waitFor(() => expect(notifications).toHaveTextContent('Ethiopian Yirgacheffe deleted.'));
+  });
+
+  it('can be dismissed before it expires', async () => {
+    stubApi({ brews: [aBrew()] });
+    const { user } = renderApp();
+
+    await deleteTheBrew(user);
+    await user.click(await screen.findByRole('button', { name: 'Dismiss' }));
+
+    expect(screen.getByRole('status', { name: 'Notifications' })).toBeEmptyDOMElement();
   });
 });
