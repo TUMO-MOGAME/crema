@@ -21,10 +21,50 @@ import { expect, test, type Page } from '@playwright/test';
  */
 const STANDARD = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
-const analyse = (page: Page) => new AxeBuilder({ page }).withTags(STANDARD).analyze();
+/**
+ * Scanned with reduced motion, and that is a correctness fix rather than a
+ * convenience.
+ *
+ * The list settles on first paint: rows fade in from `opacity: 0`, staggered by
+ * 40ms each. axe samples computed colour, so a row caught mid-fade measures as
+ * low contrast against the page — and it reported exactly that on CI, flagging
+ * a different set of rows on each retry while the first three, already settled,
+ * were never flagged. The colours were never the problem; the moment of
+ * measurement was.
+ *
+ * Emulating the preference is better than disabling animation by hand: it is a
+ * real user configuration the app claims to honour, the CSS already collapses
+ * every duration under it, and the settled colours are the ones WCAG is about.
+ *
+ * Applied through `emulateMedia` before navigating, so the page loads without
+ * motion rather than having it switched off part-way through.
+ */
+async function withoutMotion(page: Page): Promise<void> {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+}
+
+/**
+ * Waits for the page to stop moving before measuring it.
+ *
+ * Belt and braces alongside the reduced-motion emulation, since that only
+ * covers animations declared behind the media query. Anything still running
+ * here would be sampled part-way through.
+ */
+async function settled(page: Page): Promise<void> {
+  await page.waitForFunction(() =>
+    document.getAnimations().every((animation) => animation.playState !== 'running'),
+  );
+}
+
+const analyse = async (page: Page) => {
+  await settled(page);
+  return new AxeBuilder({ page }).withTags(STANDARD).analyze();
+};
 
 /** Names the rule and the element, so a failure is actionable from the log. */
-function report(violations: Awaited<ReturnType<typeof analyse>>['violations']): string {
+type Violations = Awaited<ReturnType<typeof analyse>>['violations'];
+
+function report(violations: Violations): string {
   return violations
     .map((violation) => {
       const where = violation.nodes.map((node) => node.target.join(' ')).join(', ');
@@ -34,6 +74,10 @@ function report(violations: Awaited<ReturnType<typeof analyse>>['violations']): 
 }
 
 test.describe('accessibility', () => {
+  test.beforeEach(async ({ page }) => {
+    await withoutMotion(page);
+  });
+
   test('the brew log has no violations', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Zimbabwean highlands' })).toBeVisible();
