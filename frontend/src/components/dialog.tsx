@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 /**
  * A modal, on the platform's own `<dialog>`.
@@ -34,8 +34,51 @@ interface DialogProps {
   children: ReactNode;
 }
 
+/**
+ * How long the exit takes, matching `--duration-quiet` in the tokens.
+ *
+ * Duplicated from CSS because JavaScript has to know when the animation is over
+ * in order to close the element, and reading a custom property back out of the
+ * computed style at runtime is more machinery than one number is worth. A test
+ * asserts the two agree, which is the same discipline the dial's circumference
+ * gets.
+ */
+export const EXIT_DURATION_MS = 220;
+
+/** Whether the reader has asked for less movement. */
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+}
+
 export function Dialog({ open, onClose, title, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+
+  /**
+   * Whether the dialog is on its way out.
+   *
+   * A dialog that is closing is still visible and still has to have something
+   * in it — unmounting the contents the moment `open` goes false would animate
+   * an empty box away. So the contents outlive `open` by exactly the length of
+   * the exit, and no longer: a closed dialog holds no stale form state and no
+   * heading a query could find, which is what the mount rules above are for.
+   *
+   * Adjusted during render rather than in an effect. Setting it from an effect
+   * is a render, then a second render to apply it — the cascade the lint rule
+   * names, and one that would show a frame of the closed state before the exit
+   * began. Keeping the previous `open` in state and comparing is React's
+   * documented way to derive state from a prop that changed; a ref would read
+   * more naturally and cannot be touched during render.
+   */
+  const [closing, setClosing] = useState(false);
+  const [wasOpen, setWasOpen] = useState(open);
+
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    setClosing(!open);
+  }
+
+  /** On screen while open, and for the length of the exit after that. */
+  const mounted = open || closing;
 
   // Generated, not a constant: the delete confirmation opens on top of the edit
   // form, so two dialogs are in the document at once. A shared id would put the
@@ -60,23 +103,42 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
     const dialog = ref.current;
     if (!dialog) return;
 
-    if (open && !dialog.open) {
-      returnFocusTo.current = document.activeElement as HTMLElement | null;
-      dialog.showModal();
+    if (open) {
+      if (!dialog.open) {
+        returnFocusTo.current = document.activeElement as HTMLElement | null;
+        dialog.showModal();
+      }
       return;
     }
 
-    if (!open && dialog.open) {
-      dialog.close();
+    if (!dialog.open) return;
 
-      // Only if it is still on the page and can take focus. Deleting a brew
-      // removes the row whose Edit button opened the dialog, and focusing a
-      // detached node silently does nothing.
-      const previous = returnFocusTo.current;
-      returnFocusTo.current = null;
+    /**
+     * Closing is deferred until the exit has played, and focus with it.
+     *
+     * Focus cannot be returned any earlier. A modal dialog makes the rest of
+     * the document inert, so the control that opened this one is not focusable
+     * until `close()` has run — the wait is the platform's, not a choice.
+     */
+    const timer = setTimeout(
+      () => {
+        dialog.close();
+        setClosing(false);
 
-      if (previous?.isConnected) previous.focus();
-    }
+        // Only if it is still on the page and can take focus. Deleting a brew
+        // removes the row whose Edit button opened the dialog, and focusing a
+        // detached node silently does nothing.
+        const previous = returnFocusTo.current;
+        returnFocusTo.current = null;
+
+        if (previous?.isConnected) previous.focus();
+      },
+      // Nothing to wait for when nothing is moving. Reduced motion should skip
+      // the delay, not play it invisibly.
+      prefersReducedMotion() ? 0 : EXIT_DURATION_MS,
+    );
+
+    return () => clearTimeout(timer);
   }, [open]);
 
   // A dialog removed from the page while still open would leave the document
@@ -93,6 +155,9 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
       // contents, so an `aria-labelledby` here would reference nothing and give
       // the element a broken accessible name rather than no name at all.
       {...(open ? { 'aria-labelledby': titleId } : {})}
+      // Drives the exit animation. Present only while the dialog is on screen
+      // and no longer wanted, which is the window the animation plays in.
+      data-closing={!open && mounted ? '' : undefined}
       // Escape fires `cancel` before `close`; both route to the same handler so
       // the parent's state cannot drift out of step with the element's.
       onCancel={(event) => {
@@ -107,7 +172,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
       }}
       className="bg-raised text-ink rounded-card animate-dialog-in m-auto w-[min(32rem,calc(100vw-2rem))] p-0 backdrop:cursor-pointer"
     >
-      {open && (
+      {mounted && (
         <div className="flex flex-col gap-6 p-6 sm:p-8">
           <div className="flex items-start justify-between gap-4">
             <h2

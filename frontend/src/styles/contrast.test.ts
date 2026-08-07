@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { EXIT_DURATION_MS } from '../components/dialog';
 
 /**
  * The contrast the design system actually delivers, measured from the tokens
@@ -253,6 +254,17 @@ it('exposes each theme variable through the token layer', () => {
   for (const name of ['--ui-control-edge', '--ui-danger-surface', '--ui-danger', '--ui-surface']) {
     expect(inlineBlock, `${name} is themed but has no utility`).toContain(`var(${name})`);
   }
+});
+
+/**
+ * The dialog's exit is driven by CSS but timed by JavaScript, which has to know
+ * when the animation is over in order to close the element. Two places holding
+ * one duration is two places to edit; this is the one that notices.
+ */
+it('keeps the dialog exit timer in step with the motion token', () => {
+  const token = /--duration-quiet:\s*(\d+)ms/.exec(CSS)?.[1];
+
+  expect(Number(token)).toBe(EXIT_DURATION_MS);
 });
 
 /** The dial's animation hard-codes the circumference the component computes. */

@@ -7,6 +7,32 @@ afterEach(() => {
 });
 
 /**
+ * jsdom has no `matchMedia`, so anything asking about motion preference gets
+ * `undefined` and has to guess.
+ *
+ * It answers "reduce" here, which is both the honest reading of a headless
+ * environment — nothing is being animated because nothing is being drawn — and
+ * the useful one: exit animations that a test waits out are wall-clock spent
+ * proving a timer works. The test that is actually about the delay stubs this
+ * the other way round, so the timed path is still covered rather than skipped.
+ */
+beforeEach(() => {
+  if (typeof window.matchMedia === 'function') return;
+
+  window.matchMedia = (query: string) =>
+    ({
+      matches: query.includes('prefers-reduced-motion'),
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+});
+
+/**
  * jsdom implements `<dialog>` as an element but not as a modal — `showModal`
  * and `close` are simply absent, so anything that calls them throws.
  *
