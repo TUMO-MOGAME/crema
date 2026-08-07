@@ -170,7 +170,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       # Playwright builds and serves both sides itself, so this exercises the
-      # production output rather than a dev server.
+      # production output rather than a dev server. The accessibility spec runs
+      # here too: axe against the built app is the same engine Lighthouse scores
+      # with, and asserting zero violations is stricter than a threshold that
+      # rounds a real failure up to 95.
       - name: Run end-to-end tests
         run: npm run test:e2e
 
