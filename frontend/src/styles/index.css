@@ -320,6 +320,22 @@
     animation: dial-sweep var(--duration-quiet) var(--ease-out-quiet) backwards;
   }
 
+  /* Toasts arrive from the edge they sit against. */
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .animate-toast-in {
+    animation: toast-in var(--duration-quiet) var(--ease-out-quiet);
+  }
+
   @keyframes dialog-in {
     from {
       opacity: 0;
