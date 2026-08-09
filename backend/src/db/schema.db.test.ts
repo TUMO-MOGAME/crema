@@ -226,7 +226,24 @@ describe('brew constraints', () => {
   });
 
   it('refuses to delete a brew method that brews still reference', async () => {
-    await expect(sql`delete from brew_methods where slug = 'v60'`).rejects.toThrow();
+    // The referencing brew is arranged here rather than assumed, and the
+    // difference is not stylistic. This test used to rely on a v60 brew left
+    // behind by seed.sql, so it passed in CI — which always seeds — while
+    // silently depending on data it never asked for.
+    //
+    // Against a migrated but unseeded database the assumption inverts: nothing
+    // references v60, so the delete the test expects to be refused succeeds
+    // instead. The failure is not the assertion. It is that the row is now
+    // gone, and every later test that inserts a v60 brew fails on a null
+    // method_id. One unmet precondition cost the vocabulary a row and the run
+    // 52 failures, and none of them named the cause.
+    const [row] = await insert();
+
+    try {
+      await expect(sql`delete from brew_methods where slug = 'v60'`).rejects.toThrow();
+    } finally {
+      await sql`delete from brews where id = ${row!.id as string}`;
+    }
   });
 });
 
