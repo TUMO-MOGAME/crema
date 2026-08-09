@@ -1,7 +1,7 @@
 import { brewSchema, brewStatsSchema, EMPTY_BREW_STATS, type CreateBrewInput } from '@crema/shared';
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { BrewRepository } from './brew.repository';
+import type { BrewRepository } from './brew.repository.js';
 
 /**
  * The suite every `BrewRepository` implementation must pass.

@@ -1,9 +1,9 @@
 import { isApiErrorBody } from '@crema/shared';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { errorHandler } from './error-handler';
-import { rateLimit } from './rate-limit';
-import type { AppEnv } from '../types';
+import { errorHandler } from './error-handler.js';
+import { rateLimit } from './rate-limit.js';
+import type { AppEnv } from '../types.js';
 
 /**
  * Built per test with a tiny limit rather than by driving the real app past 120

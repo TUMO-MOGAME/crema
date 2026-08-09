@@ -6,11 +6,11 @@ import {
   type ApiErrorBody,
 } from '@crema/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AiProvider } from '../ai';
-import { FakeAiProvider } from '../ai/fake-ai-provider';
-import { createApp } from '../app';
-import { AppError } from '../lib/app-error';
-import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository';
+import type { AiProvider } from '../ai/index.js';
+import { FakeAiProvider } from '../ai/fake-ai-provider.js';
+import { createApp } from '../app.js';
+import { AppError } from '../lib/app-error.js';
+import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository.js';
 
 /**
  * `POST /api/ai/quick-log`, over the real app and without a model.

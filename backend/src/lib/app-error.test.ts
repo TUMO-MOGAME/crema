@@ -1,6 +1,6 @@
 import { ERROR_STATUS } from '@crema/shared';
 import { describe, expect, it } from 'vitest';
-import { AppError } from './app-error';
+import { AppError } from './app-error.js';
 
 describe('AppError', () => {
   it('derives its status from the shared code map rather than hardcoding one', () => {

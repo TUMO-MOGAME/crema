@@ -1,5 +1,5 @@
-import { describeAiProviderContract } from './ai-provider.contract';
-import { GeminiAiProvider } from './gemini-ai-provider';
+import { describeAiProviderContract } from './ai-provider.contract.js';
+import { GeminiAiProvider } from './gemini-ai-provider.js';
 
 /**
  * The Gemini adapter, against the real model.

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Env } from '../config/env';
-import { createAiProvider } from './index';
-import { FakeAiProvider } from './fake-ai-provider';
-import { GeminiAiProvider } from './gemini-ai-provider';
+import type { Env } from '../config/env.js';
+import { createAiProvider } from './index.js';
+import { FakeAiProvider } from './fake-ai-provider.js';
+import { GeminiAiProvider } from './gemini-ai-provider.js';
 
 /**
  * Constructing `GeminiAiProvider` opens no connection and sends no request, so

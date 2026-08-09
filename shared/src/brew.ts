@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BREW_METHOD_SLUGS } from './brew-methods';
+import { BREW_METHOD_SLUGS } from './brew-methods.js';
 
 /**
  * Field limits.

@@ -1,6 +1,6 @@
 import { BREW_METHODS } from '@crema/shared';
 import { Hono } from 'hono';
-import type { AppEnv } from '../types';
+import type { AppEnv } from '../types.js';
 
 /**
  * The brew method vocabulary, in display order.

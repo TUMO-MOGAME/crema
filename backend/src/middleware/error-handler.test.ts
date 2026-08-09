@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { requestId } from 'hono/request-id';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AppError } from '../lib/app-error';
-import type { AppEnv } from '../types';
-import { errorHandler, notFoundHandler } from './error-handler';
+import { AppError } from '../lib/app-error.js';
+import type { AppEnv } from '../types.js';
+import { errorHandler, notFoundHandler } from './error-handler.js';
 
 /** A throwaway app whose only route throws, so the handler can be exercised directly. */
 function appThatThrows(thrown: unknown): Hono<AppEnv> {

@@ -1,9 +1,9 @@
-import { env, type Env } from '../config/env';
-import { createDatabase } from '../db/client';
-import type { BrewRepository } from './brew.repository';
-import { DrizzleBrewRepository } from './drizzle-brew.repository';
-import { InMemoryBrewRepository } from './in-memory-brew.repository';
-import { seedBrewInputs } from './seed-brews';
+import { env, type Env } from '../config/env.js';
+import { createDatabase } from '../db/client.js';
+import type { BrewRepository } from './brew.repository.js';
+import { DrizzleBrewRepository } from './drizzle-brew.repository.js';
+import { InMemoryBrewRepository } from './in-memory-brew.repository.js';
+import { seedBrewInputs } from './seed-brews.js';
 
 /**
  * The one place that decides which adapter the app runs on.
@@ -30,4 +30,4 @@ export function createBrewRepository(config: Env = env): BrewRepository {
   return new InMemoryBrewRepository(seedBrewInputs());
 }
 
-export type { BrewFilter, BrewRepository } from './brew.repository';
+export type { BrewFilter, BrewRepository } from './brew.repository.js';

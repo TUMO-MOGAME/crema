@@ -2,7 +2,7 @@ import { is } from 'drizzle-orm';
 import { PgTable, getTableConfig } from 'drizzle-orm/pg-core';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import * as schema from './schema';
+import * as schema from './schema.js';
 
 /**
  * Runs against a live Postgres with the migrations applied. See

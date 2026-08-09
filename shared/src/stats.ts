@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { brewMethodSchema } from './brew';
+import { brewMethodSchema } from './brew.js';
 
 /**
  * What `GET /api/stats` returns.

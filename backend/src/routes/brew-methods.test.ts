@@ -1,7 +1,7 @@
 import { BREW_METHOD_SLUGS, type BrewMethod } from '@crema/shared';
 import { describe, expect, it } from 'vitest';
-import { createApp } from '../app';
-import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository';
+import { createApp } from '../app.js';
+import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository.js';
 
 const app = createApp({ brews: new InMemoryBrewRepository() });
 

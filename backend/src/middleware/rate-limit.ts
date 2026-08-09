@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono';
-import { AppError } from '../lib/app-error';
-import type { AppEnv } from '../types';
+import { AppError } from '../lib/app-error.js';
+import type { AppEnv } from '../types.js';
 
 /**
  * A fixed-window rate limiter, kept in this process's memory.

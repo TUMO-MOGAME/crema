@@ -1,8 +1,8 @@
 import { brewSchema } from '@crema/shared';
 import { describe, expect, it } from 'vitest';
-import { describeBrewRepositoryContract } from './brew.repository.contract';
-import { InMemoryBrewRepository } from './in-memory-brew.repository';
-import { SEED_BREWS, seedBrewInputs } from './seed-brews';
+import { describeBrewRepositoryContract } from './brew.repository.contract.js';
+import { InMemoryBrewRepository } from './in-memory-brew.repository.js';
+import { SEED_BREWS, seedBrewInputs } from './seed-brews.js';
 
 describeBrewRepositoryContract('InMemoryBrewRepository', {
   fresh: () => Promise.resolve(new InMemoryBrewRepository()),

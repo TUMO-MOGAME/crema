@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { brewMethodStatsSchema, brewStatsSchema, EMPTY_BREW_STATS } from './stats';
+import { brewMethodStatsSchema, brewStatsSchema, EMPTY_BREW_STATS } from './stats.js';
 
 const methodStats = {
   method: 'v60',

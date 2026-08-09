@@ -1,6 +1,6 @@
 import { brewProposalSchema } from '@crema/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AiProvider } from './ai-provider';
+import type { AiProvider } from './ai-provider.js';
 
 /**
  * The suite every `AiProvider` implementation must pass.

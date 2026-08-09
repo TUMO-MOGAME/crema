@@ -1,9 +1,9 @@
 import type { CreateBrewInput } from '@crema/shared';
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AppError } from '../lib/app-error';
-import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository';
-import { BrewService } from './brew.service';
+import { AppError } from '../lib/app-error.js';
+import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository.js';
+import { BrewService } from './brew.service.js';
 
 /**
  * The service against a real in-memory repository rather than a mock.

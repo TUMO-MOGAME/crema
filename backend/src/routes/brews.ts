@@ -1,10 +1,10 @@
 import { brewQuerySchema, createBrewSchema, updateBrewSchema } from '@crema/shared';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
-import { AppError } from '../lib/app-error';
-import { jsonBody, parseOrThrow } from '../lib/validation';
-import type { BrewService } from '../services/brew.service';
-import type { AppEnv } from '../types';
+import { AppError } from '../lib/app-error.js';
+import { jsonBody, parseOrThrow } from '../lib/validation.js';
+import type { BrewService } from '../services/brew.service.js';
+import type { AppEnv } from '../types.js';
 
 /**
  * The brew CRUD surface, exactly as PLANNING section 4.4 specifies it.

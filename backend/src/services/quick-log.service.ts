@@ -1,6 +1,6 @@
 import type { BrewProposal } from '@crema/shared';
-import type { AiProvider } from '../ai';
-import { AppError } from '../lib/app-error';
+import type { AiProvider } from '../ai/index.js';
+import { AppError } from '../lib/app-error.js';
 
 /**
  * Turning a sentence into a brew the user can confirm.

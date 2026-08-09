@@ -2,7 +2,7 @@ import { createBrewSchema } from '@crema/shared';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SEED_BREWS, seedBrewInputs } from './seed-brews';
+import { SEED_BREWS, seedBrewInputs } from './seed-brews.js';
 
 /**
  * The demo brews exist twice: as SQL for a seeded Postgres, and as a TypeScript

@@ -2,9 +2,9 @@ import { sql } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { createDatabase } from '../db/client';
-import { describeBrewRepositoryContract } from './brew.repository.contract';
-import { DrizzleBrewRepository } from './drizzle-brew.repository';
+import { createDatabase } from '../db/client.js';
+import { describeBrewRepositoryContract } from './brew.repository.contract.js';
+import { DrizzleBrewRepository } from './drizzle-brew.repository.js';
 
 /**
  * The dormant adapter, run against a real Postgres with the migrations applied.

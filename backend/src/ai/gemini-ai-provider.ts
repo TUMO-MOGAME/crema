@@ -8,8 +8,8 @@ import {
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject, NoObjectGeneratedError } from 'ai';
 import { z } from 'zod';
-import { AppError } from '../lib/app-error';
-import type { AiCallOptions, AiProvider, BrewProposalResult } from './ai-provider';
+import { AppError } from '../lib/app-error.js';
+import type { AiCallOptions, AiProvider, BrewProposalResult } from './ai-provider.js';
 
 /**
  * The real provider: Gemini, through the Vercel AI SDK.

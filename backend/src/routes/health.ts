@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { env } from '../config/env';
-import type { QuickLogService } from '../services/quick-log.service';
-import type { AppEnv } from '../types';
+import { env } from '../config/env.js';
+import type { QuickLogService } from '../services/quick-log.service.js';
+import type { AppEnv } from '../types.js';
 
 /**
  * Reports what this deployment can actually do.

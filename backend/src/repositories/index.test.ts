@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { loadEnv } from '../config/env';
-import { createBrewRepository } from './index';
-import { DrizzleBrewRepository } from './drizzle-brew.repository';
-import { InMemoryBrewRepository } from './in-memory-brew.repository';
+import { loadEnv } from '../config/env.js';
+import { createBrewRepository } from './index.js';
+import { DrizzleBrewRepository } from './drizzle-brew.repository.js';
+import { InMemoryBrewRepository } from './in-memory-brew.repository.js';
 
 /**
  * The factory is one `if`, and it is the whole of the deployment story: this is

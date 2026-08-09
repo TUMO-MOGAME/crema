@@ -7,8 +7,8 @@ import {
   type CreateBrewInput,
   type UpdateBrewInput,
 } from '@crema/shared';
-import { AppError } from '../lib/app-error';
-import type { BrewFilter, BrewRepository } from '../repositories/brew.repository';
+import { AppError } from '../lib/app-error.js';
+import type { BrewFilter, BrewRepository } from '../repositories/brew.repository.js';
 
 /**
  * The rules about brews that are neither HTTP nor storage.

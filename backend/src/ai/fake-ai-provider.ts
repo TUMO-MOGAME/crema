@@ -6,8 +6,8 @@ import {
   type BrewMethodSlug,
   type BrewProposal,
 } from '@crema/shared';
-import { AppError } from '../lib/app-error';
-import type { AiCallOptions, AiProvider, BrewProposalResult } from './ai-provider';
+import { AppError } from '../lib/app-error.js';
+import type { AiCallOptions, AiProvider, BrewProposalResult } from './ai-provider.js';
 
 /**
  * A provider that reads a sentence with regular expressions instead of a model.

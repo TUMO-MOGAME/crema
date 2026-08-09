@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ERROR_CODES, ERROR_STATUS, isApiErrorBody } from './errors';
+import { ERROR_CODES, ERROR_STATUS, isApiErrorBody } from './errors.js';
 
 const validBody = {
   error: {
