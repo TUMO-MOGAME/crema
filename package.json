@@ -28,6 +28,7 @@
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "test:e2e": "playwright test",
     "test:db": "npm run test:db -w @crema/backend",
+    "test:ai": "npm run test:ai -w @crema/backend",
     "db:apply": "node --env-file-if-exists=.env scripts/apply-migrations.mjs",
     "db:reset": "node --env-file-if-exists=.env scripts/apply-migrations.mjs --seed",
     "lint:migrations": "node scripts/lint-migrations.mjs",

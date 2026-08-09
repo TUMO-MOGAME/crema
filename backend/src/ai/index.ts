@@ -1,20 +1,39 @@
+import { env, isAiEnabled, type Env } from '../config/env';
+import type { AiProvider } from './ai-provider';
+import { GeminiAiProvider } from './gemini-ai-provider';
+
 /**
- * The AI seam: an interface, the suite that defines it, and a fake that passes.
+ * The one place that decides whether this deployment has an AI at all.
  *
- * There is deliberately no `createAiProvider` here yet. The obvious version of
- * it — return a provider when `GEMINI_API_KEY` is set, `null` otherwise —
- * cannot be written honestly until a provider exists to return, and shipping it
- * early would put the app in a state it is not designed to be in: `/api/health`
- * reporting `ai.enabled: true` because a key is present, while every AI route
- * answers 503 because there is nothing behind them. One of those two would be
- * lying, and which one is not obvious from either side.
+ * `null` rather than a throw, because null is the state the rest of the app is
+ * built to handle: `/api/health` reports `ai.enabled: false`, the AI routes
+ * answer 503 with `AI_UNAVAILABLE`, and the frontend hides those surfaces
+ * instead of offering something that breaks when pressed. A reviewer who clones
+ * this repository without a Gemini key gets an app where every requirement in
+ * the brief works and two extra features are politely absent.
  *
- * So the factory arrives with the Gemini adapter, in the same commit that gives
- * it something to build. Until then the only way to get a provider is to
- * construct one, which is what the tests do and what keeps the fake out of a
+ * `null` rather than the fake, too, and that is the more important half.
+ * Substituting the fake when the key is missing would make Quick Log appear to
+ * work while returning answers no model produced — helpfulness indistinguishable
+ * from a bug until someone trusts it. The fake is reachable only by
+ * constructing it, which is what the tests do and what keeps it out of a
  * request path by accident.
+ *
+ * This function is now the whole of "turning the AI on", in the same way
+ * `createBrewRepository` is the whole of turning Supabase on: set the key in
+ * the deployment and redeploy. No route or service changes, because nothing
+ * above this line has seen anything but the `AiProvider` interface.
  */
+export function createAiProvider(config: Env = env): AiProvider | null {
+  // Restated rather than asserted away. `isAiEnabled` is the check every other
+  // caller uses, and narrowing an optional string is not something it can do
+  // for the type system.
+  if (!isAiEnabled(config) || !config.GEMINI_API_KEY) return null;
+
+  return new GeminiAiProvider(config.GEMINI_API_KEY, config.GEMINI_MODEL);
+}
 
 export type { AiCallOptions, AiProvider, AiUsage, BrewProposalResult } from './ai-provider';
 export { describeAiProviderContract, type AiProviderHarness } from './ai-provider.contract';
 export { FakeAiProvider } from './fake-ai-provider';
+export { GeminiAiProvider } from './gemini-ai-provider';
