@@ -117,11 +117,25 @@ brief.
    GEMINI_API_KEY=your-key-here
    ```
 
-3. Restart. `GET /api/health` reports `ai.enabled: true`, and the Quick Log and
-   Brew Coach surfaces appear in the UI.
+3. Restart. `GET /api/health` reports `ai.enabled: true`.
 
-Without the key, `/api/coach/*` returns `503` with a clear code, the UI hides
-those surfaces, and every other feature is unaffected.
+As built today that enables `POST /api/ai/quick-log`, which reads a sentence and
+returns a brew proposal:
+
+```bash
+curl -X POST http://localhost:3000/api/ai/quick-log \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"18g of the Ethiopian through the V60, 300 water, blackcurrant, solid 4"}'
+```
+
+It answers `200` with `{ brew, inferred }` — a candidate, not a record. Nothing
+is written; `POST /api/brews` is still the only route that creates a brew, and
+the user confirms the pre-filled form first. The Quick Log button and the Brew
+Coach are still to come, so the endpoint is currently ahead of the UI.
+
+Without the key, `/api/ai/*` returns `503` with `AI_UNAVAILABLE`, the health
+endpoint says so, and every other feature is unaffected. That path is tested
+rather than assumed.
 
 ## 6. Connect Supabase — optional locally, required in production
 
