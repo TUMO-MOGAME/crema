@@ -33,7 +33,21 @@ export function createAiProvider(config: Env = env): AiProvider | null {
   return new GeminiAiProvider(config.GEMINI_API_KEY, config.GEMINI_MODEL);
 }
 
+/**
+ * Types and the factory, and deliberately nothing else.
+ *
+ * `repositories/index.ts` exports `createBrewRepository` and its interfaces
+ * without re-exporting either adapter or the contract suite, and the reason is
+ * not tidiness. `app.ts` imports this file, so everything named here is
+ * reachable from `src/server.ts` and lands in the production bundle.
+ *
+ * Re-exporting `describeAiProviderContract` from here put `ai-provider.contract`
+ * — which imports vitest, as a test helper should — into that graph. It built
+ * fine on any machine with devDependencies installed and failed the deploy,
+ * where they are not: `Could not resolve "vitest"`. CI could not catch it
+ * either, because CI installs devDependencies too.
+ *
+ * Test files import the fake and the contract from their own modules directly,
+ * which is what the repository tests already do.
+ */
 export type { AiCallOptions, AiProvider, AiUsage, BrewProposalResult } from './ai-provider';
-export { describeAiProviderContract, type AiProviderHarness } from './ai-provider.contract';
-export { FakeAiProvider } from './fake-ai-provider';
-export { GeminiAiProvider } from './gemini-ai-provider';

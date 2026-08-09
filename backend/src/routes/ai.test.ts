@@ -7,7 +7,7 @@ import {
 } from '@crema/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AiProvider } from '../ai';
-import { FakeAiProvider } from '../ai';
+import { FakeAiProvider } from '../ai/fake-ai-provider';
 import { createApp } from '../app';
 import { AppError } from '../lib/app-error';
 import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository';
