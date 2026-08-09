@@ -1,7 +1,28 @@
 import { isApiErrorBody, type ErrorCode, type FieldError } from '@crema/shared';
 import type { ZodType } from 'zod';
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
+/**
+ * Where the API is.
+ *
+ * Empty means same origin, and that is what the deployment is: one Vercel
+ * project serves the SPA at `/` and rewrites `/api` to the backend service, so
+ * the browser only ever talks to the host it was loaded from. No CORS
+ * exchange, and the tight `connect-src 'self'` in `vercel.json` covers it
+ * without naming a domain.
+ *
+ * Development is the exception rather than the rule here — two processes on
+ * two ports genuinely are two origins — so the dev default names the API
+ * explicitly. `VITE_API_BASE_URL` overrides both, for a deployment where the
+ * API really does live somewhere else.
+ *
+ * The old default was `http://localhost:3000` in every environment, which is
+ * correct on one machine and broken everywhere else: a production bundle built
+ * without the variable set would have asked each visitor's own computer for
+ * the brew log.
+ */
+const DEFAULT_BASE_URL = import.meta.env.DEV ? 'http://localhost:3000' : '';
+
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
 
 /**
  * Every failure the client can see, in one type.
