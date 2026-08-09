@@ -126,7 +126,6 @@ in an interview.
 │   │   ├── db/                  Drizzle schema, client factory
 │   │   ├── ai/                  Agent, tools, prompts, guardrails
 │   │   └── middleware/          error handler, request id, rate limit, CORS
-│   └── api/index.ts             Vercel Functions entrypoint
 │
 ├── shared/                      Zod schemas + inferred types, used by both
 │

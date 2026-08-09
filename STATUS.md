@@ -242,7 +242,8 @@ Built beyond the minimum, because the rest of the work leans on it:
 - [x] Backend shell — app factory separated from listener, Zod-validated env
       loader, `AppError` with code-to-status mapping, error and not-found
       handlers, request id, CORS, security headers, `/api/health`, 20 tests
-- [x] Vercel Functions entrypoint at `backend/api/index.ts`
+- [x] Deployment entrypoint — `backend/src/server.ts`, the same file
+      `npm run dev` starts
 - [x] Frontend shell — providers, query client with error-aware retry, typed API
       client, `useDocumentTitle` for the `Brews: {n}` requirement, 15 tests
 - [x] Tailwind v4 base tokens, `prefers-reduced-motion` respected from the start

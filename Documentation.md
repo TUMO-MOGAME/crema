@@ -184,8 +184,7 @@ frontend/            React 19 + Vite single-page app
 
 backend/             Hono JSON API
   src/app.ts         Route composition, no listener — testable in isolation
-  src/server.ts      Local Node entrypoint
-  api/index.ts       Vercel Functions entrypoint
+  src/server.ts      Entrypoint — locally and as the deployed service
   src/config/        Zod-validated environment
   src/routes/        HTTP layer only
   src/services/      Business rules, framework-agnostic

@@ -8,5 +8,5 @@
     "declarationMap": false,
     "types": ["node"]
   },
-  "include": ["src", "api", "*.config.ts"]
+  "include": ["src", "*.config.ts"]
 }
