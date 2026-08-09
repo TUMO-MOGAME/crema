@@ -76,4 +76,22 @@ export class AppError extends Error {
       'The brew coach is not configured on this deployment. Every other feature works normally.',
     );
   }
+
+  /**
+   * The model answered, and what it said was not a brew.
+   *
+   * A 422 rather than a 500, because nothing is broken: the request was valid,
+   * the service worked, and the model produced something that does not describe
+   * a cup of coffee. The caller's move is to rephrase, which is a different
+   * instruction from "try again later" — so it gets a different code.
+   *
+   * The reason is for the log rather than the reader. Model output can contain
+   * whatever was typed into it, so it is never echoed back in the response.
+   */
+  static aiParseFailed(): AppError {
+    return new AppError(
+      'AI_PARSE_FAILED',
+      'That could not be read as a brew. Try describing the coffee, the method and the amounts.',
+    );
+  }
 }
