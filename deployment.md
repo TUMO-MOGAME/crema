@@ -1,8 +1,8 @@
 # Deployment
 
-> **Status: not yet deployed.** Deployment is Phase 7 of the plan and has not
-> been reached. This file describes the target and is updated with live URLs the
-> moment the first deploy lands. Progress: [STATUS.md](./STATUS.md).
+> **Status: deploying.** The first attempts are underway and the log at the
+> bottom records each failure and what fixed it. Live URLs land here the moment
+> a deploy succeeds. Progress: [STATUS.md](./STATUS.md).
 
 ## Live URLs
 
@@ -28,6 +28,13 @@ record here instead of two that must agree.
 | ---------- | ---------- | --------- | ------------------------------------------------ |
 | `frontend` | `frontend` | Vite      | The SPA, at `/`                                  |
 | `backend`  | `backend`  | Hono      | The API, at `/api`, from `backend/src/server.ts` |
+
+The one project setting that matters is **Root Directory**, and it must be the
+repository root — leave the field empty. Services mode only exists inside the
+root `vercel.json`; point the project at `frontend/` instead and Vercel never
+reads it, silently degrading to a single-workspace Vite build whose scoped
+install skips the root devDependencies and never builds `@crema/shared`. That
+exact misconfiguration was the first failed deploy in the log below.
 
 The rewrite is a rewrite rather than a redirect, so `/api/health` reaches the
 service with its path intact and Hono routes it exactly as it does locally. And
@@ -76,7 +83,6 @@ Set in the Vercel dashboard only. Nothing sensitive is ever committed.
 
 | Variable                       | Value                                                     |
 | ------------------------------ | --------------------------------------------------------- |
-| `NODE_ENV`                     | `production`                                              |
 | `DATA_SOURCE`                  | `postgres`                                                |
 | `DATABASE_URL`                 | secret, the Supabase pooled connection string             |
 | `TRUST_PROXY`                  | `true` — Vercel overwrites the forwarding header          |
@@ -93,6 +99,14 @@ reality after a rename.
 Corepack is not optional here. `.npmrc` sets `engine-strict=true` and `engines`
 requires npm 11.16 or newer, so without it the install fails outright with
 `EBADENGINE`.
+
+`NODE_ENV` is deliberately not set, and an earlier revision of this table that
+said to set it was wrong. Vercel documents that a user-supplied
+`NODE_ENV=production` makes the install omit devDependencies — which is where
+vite, tsup and typescript live, so the build dies before it starts. The Node
+runtime already runs production deployments with `NODE_ENV=production`, which is
+what arms the env loader's refusal of the in-memory store; nothing needs the
+variable set by hand.
 
 The Supabase project is `gctoggnyblkqffpdzmcc`, and its transaction pooler is
 `aws-1-eu-west-1.pooler.supabase.com:6543`. The host is recorded because it is
@@ -127,6 +141,7 @@ Recorded as it happens, including anything that went wrong and how it was
 resolved — the brief asks for troubleshooting notes, and the useful version of
 that is a real log rather than a summary written afterwards.
 
-| Date | Event            | Notes   |
-| ---- | ---------------- | ------- |
-| —    | Not yet deployed | Phase 7 |
+| Date       | Event               | Notes                                                                                                                                                                                                                                                                                                                               |
+| ---------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-10 | First deploy failed | `vite build` could not resolve `vitest/config`. Two causes stacked: the project's Root Directory was `frontend`, so Vercel never read the services config and ran a single-workspace build whose scoped install (168 packages) skips root devDependencies — and `vite.config.ts` imported the test runner, which lives at the root. |
+| 2026-08-10 | Fixes applied       | Test configuration split into `vitest.config.ts` so the build never touches vitest, and Root Directory cleared to the repository root so the `services` config in `vercel.json` drives the deploy. Redeploy pending.                                                                                                                |
