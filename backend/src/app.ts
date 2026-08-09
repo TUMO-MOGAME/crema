@@ -3,16 +3,19 @@ import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { requestId } from 'hono/request-id';
 import { secureHeaders } from 'hono/secure-headers';
+import { createAiProvider, type AiProvider } from './ai';
 import { env } from './config/env';
 import { AppError } from './lib/app-error';
 import { errorHandler, notFoundHandler } from './middleware/error-handler';
 import { rateLimit } from './middleware/rate-limit';
 import { createBrewRepository, type BrewRepository } from './repositories';
+import { createAiRoutes } from './routes/ai';
 import { brewMethodRoutes } from './routes/brew-methods';
 import { createBrewRoutes } from './routes/brews';
-import { healthRoutes } from './routes/health';
+import { createHealthRoutes } from './routes/health';
 import { createStatsRoutes } from './routes/stats';
 import { BrewService } from './services/brew.service';
+import { QuickLogService } from './services/quick-log.service';
 import type { AppEnv } from './types';
 
 /**
@@ -24,6 +27,14 @@ import type { AppEnv } from './types';
  */
 export interface AppDependencies {
   brews: BrewRepository;
+
+  /**
+   * `null` is a supported configuration, not a missing dependency: a deployment
+   * with no `GEMINI_API_KEY` runs every graded feature and answers 503 on the
+   * AI routes. Injected like the repository so a test can hand over the
+   * deterministic fake and exercise the real routes without a key or a network.
+   */
+  ai?: AiProvider | null;
 }
 
 /**
@@ -117,12 +128,38 @@ export function createApp(
     }),
   );
 
-  const brews = new BrewService(dependencies.brews);
+  /**
+   * A much tighter budget on the AI routes, mounted after the general limiter
+   * so both apply and the smaller one binds.
+   *
+   * The general limit exists to stop a runaway loop. This one exists because
+   * every request behind it spends money at a third party: a client stuck in a
+   * retry loop against `/api/brews` wastes CPU, and the same loop against
+   * `/api/ai` wastes the bill. Ten a minute is far more than a person typing
+   * sentences will ever need and far less than a loop can spend.
+   */
+  app.use(
+    '/api/ai/*',
+    rateLimit({
+      limit: env.AI_RATE_LIMIT_PER_MINUTE,
+      windowMs: 60_000,
+      trustProxy: env.TRUST_PROXY,
+    }),
+  );
 
-  app.route('/api', healthRoutes);
+  const brews = new BrewService(dependencies.brews);
+  // Presence of the key, not truthiness of the value. `?? createAiProvider()`
+  // would be wrong in the one case that matters: a test passing `ai: null` to
+  // assert the 503 path would silently get the real provider on any machine
+  // where a key happens to be configured, and pass for the wrong reason.
+  const ai = 'ai' in dependencies ? (dependencies.ai ?? null) : createAiProvider();
+  const quickLog = new QuickLogService(ai);
+
+  app.route('/api', createHealthRoutes(quickLog));
   app.route('/api', brewMethodRoutes);
   app.route('/api', createBrewRoutes(brews));
   app.route('/api', createStatsRoutes(brews));
+  app.route('/api', createAiRoutes(quickLog));
 
   app.notFound(notFoundHandler);
   app.onError(errorHandler);
