@@ -3,21 +3,18 @@ import { app } from './app.js';
 import { env } from './config/env.js';
 
 /**
- * The entrypoint, locally and deployed.
+ * The listening entrypoint: local development and the end-to-end suite.
  *
- * It used to say "local development only", with production going through a
- * Vercel Function instead. That is no longer true: the deployment runs both
- * workspaces as services from one origin, and a Node service is started by
- * running a file that calls `listen()` — Vercel watches for that call and
- * routes traffic to the port it binds.
+ * Deployed, nothing runs this file. Vercel's Hono runtime imports the default
+ * export of `app.ts` and calls `app.fetch` per request — no port is ever
+ * bound. An earlier revision believed the opposite, that a service is started
+ * by a file calling `listen()`, and the deploy refused it: a file that starts
+ * a listener is not a file that exports an app.
  *
- * Which makes this the same program in both places, and that is worth more
- * than the arrangement it replaced. The thing that runs in production is the
- * thing you run with `npm run dev` and the thing the end-to-end suite drives,
- * rather than a second entrypoint that wrapped the same app and could drift
- * from it without anything noticing.
- *
- * `PORT` is supplied by the platform there and defaults to 3000 here.
+ * The drift risk that belief was guarding against is still covered. Both
+ * entrypoints are one import away from the same `createApp()`, and this one
+ * adds nothing but the listener — so the program the suite drives here is the
+ * program production serves, minus the port.
  */
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.warn(`crema api  →  http://localhost:${info.port}  [${env.DATA_SOURCE}]`);

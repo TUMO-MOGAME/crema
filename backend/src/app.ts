@@ -168,3 +168,15 @@ export function createApp(
 }
 
 export const app = createApp();
+
+/**
+ * What the deployment runs.
+ *
+ * Vercel's Hono runtime imports the default export and calls `app.fetch` per
+ * request — no port, no listener, no `serve()`. `server.ts` remains the
+ * entrypoint everywhere a real process listens: local development and the
+ * server the end-to-end suite drives. A build that named `server.ts` as the
+ * service entrypoint failed, because a file that starts a listener is not a
+ * file that exports an app, and the runtime wants the app.
+ */
+export default app;

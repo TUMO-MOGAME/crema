@@ -24,10 +24,16 @@ removes three problems rather than solving them: no cross-origin request to
 permit, no second domain to keep in step with a hardcoded CSP, and one URL to
 record here instead of two that must agree.
 
-| Service    | Root       | Framework | Serves                                           |
-| ---------- | ---------- | --------- | ------------------------------------------------ |
-| `frontend` | `frontend` | Vite      | The SPA, at `/`                                  |
-| `backend`  | `backend`  | Hono      | The API, at `/api`, from `backend/src/server.ts` |
+| Service    | Root       | Framework | Serves                                                        |
+| ---------- | ---------- | --------- | ------------------------------------------------------------- |
+| `frontend` | `frontend` | Vite      | The SPA, at `/`                                               |
+| `backend`  | `backend`  | Hono      | The API, at `/api`, from the app `backend/src/app.ts` exports |
+
+The backend entrypoint is `app.ts`, not `server.ts`, and the distinction is
+load-bearing: Vercel's Hono runtime imports the file's default export and serves
+`app.fetch` itself, so the entry must be the file that exports the app.
+`server.ts` — the file that binds a port — is the entrypoint only where a real
+process listens, which is local development and the end-to-end suite.
 
 The one project setting that matters is **Root Directory**, and it must be the
 repository root — leave the field empty. Services mode only exists inside the
@@ -141,7 +147,9 @@ Recorded as it happens, including anything that went wrong and how it was
 resolved — the brief asks for troubleshooting notes, and the useful version of
 that is a real log rather than a summary written afterwards.
 
-| Date       | Event               | Notes                                                                                                                                                                                                                                                                                                                               |
-| ---------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-08-10 | First deploy failed | `vite build` could not resolve `vitest/config`. Two causes stacked: the project's Root Directory was `frontend`, so Vercel never read the services config and ran a single-workspace build whose scoped install (168 packages) skips root devDependencies — and `vite.config.ts` imported the test runner, which lives at the root. |
-| 2026-08-10 | Fixes applied       | Test configuration split into `vitest.config.ts` so the build never touches vitest, and Root Directory cleared to the repository root so the `services` config in `vercel.json` drives the deploy. Redeploy pending.                                                                                                                |
+| Date       | Event                | Notes                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-08-10 | First deploy failed  | `vite build` could not resolve `vitest/config`. Two causes stacked: the project's Root Directory was `frontend`, so Vercel never read the services config and ran a single-workspace build whose scoped install (168 packages) skips root devDependencies — and `vite.config.ts` imported the test runner, which lives at the root.                                      |
+| 2026-08-10 | Fixes applied        | Test configuration split into `vitest.config.ts` so the build never touches vitest, and Root Directory cleared to the repository root so the `services` config in `vercel.json` drives the deploy. Redeploy pending.                                                                                                                                                     |
+| 2026-08-10 | Second deploy failed | `Service "backend" detected framework "hono" in "backend" and must specify an "entrypoint" for runtime "node".` Services mode was live — the failure moved into the backend. The entrypoint named `src/server.ts`, a file that calls `serve()` and exports nothing; Vercel's Hono runtime imports a default-exported app and rejects an entry that does not provide one. |
+| 2026-08-10 | Fix applied          | `app.ts` now default-exports the app and the service entrypoint names it, with the framework pinned to `hono`. `server.ts` stays the listening entrypoint for local development and the end-to-end suite. Redeploy pending.                                                                                                                                              |

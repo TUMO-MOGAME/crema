@@ -39,7 +39,8 @@
     },
     "backend": {
       "root": "backend",
-      "entrypoint": "src/server.ts"
+      "framework": "hono",
+      "entrypoint": "src/app.ts"
     }
   },
 
