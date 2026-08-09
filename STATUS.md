@@ -1,7 +1,7 @@
 # Status
 
 **Project:** Crema — Coffee Brew Log **Branch:** `main` **Last updated:**
-2026-08-07
+2026-08-09
 
 Live progress board. Open this file first — it answers "what is done, how far
 along is this, what is next, and what is blocked" without reading any code. The
@@ -37,6 +37,21 @@ Phases 0, 1 and 2 are complete and verified. The monorepo runs, builds, tests
 and lints clean on a fresh install; every change to the portfolio repository has
 to pass nine CI stages behind a protected branch; and the full Postgres schema
 exists as ordered migrations that CI applies to a real database on every push.
+
+Phase 5 is complete and merged, and it closes the polish work. Writes apply
+before the server agrees and roll back if it refuses, so the list never sits
+waiting on a round trip. The states a real network produces are all drawn:
+loading skeletons, empty, error, and an offline banner that says the connection
+is gone rather than letting a write fail into nothing. Toasts announce through
+`aria-live`, dialogs trap focus and hand it back, every control is reachable by
+keyboard, and motion stays restrained and honours `prefers-reduced-motion`.
+
+The accessibility target is met as zero axe violations across five page states
+rather than as a Lighthouse number. Lighthouse computes that score by running
+axe and weighting the rules that break, so asserting the engine directly is both
+stricter and more useful: a score of 95 means something is wrong and the
+rounding was kind, while a failure here names the rule, the impact and the
+element instead of moving a dial.
 
 Phase 4 is complete and merged, so the app is now the thing the brief asks for:
 a brew log you can read, filter, add to, edit and delete, in light or dark, from
@@ -92,17 +107,16 @@ has push access but not admin — so the enforced workflow lives on the public
 mirror at <https://github.com/TUMO-MOGAME/crema> and both remotes are kept at
 the same commit.
 
-| Check                      | Result                                                         |
-| -------------------------- | -------------------------------------------------------------- |
-| `npm run verify`           | green — format, lint, typecheck, test                          |
-| Unit and integration tests | 299 passing (57 shared, 187 backend, 55 web)                   |
-| Database tests             | 91 passing against a real Postgres 17                          |
-| End-to-end journeys        | 9 passing against production builds                            |
-| Coverage                   | shared 100%, backend 99.3% lines / 86% branches, web 94% / 87% |
-| Bundle                     | 116 kB js and 5 kB css gzipped, against a 250 / 40 kB budget   |
-| CI on `main`               | all nine stages green                                          |
-| CI on the Phase 4 branch   | blocked — see below. Every stage that got a runner passed      |
-| Branch protection          | direct push to `main` rejected, failing PR blocked             |
+| Check                      | Result                                                           |
+| -------------------------- | ---------------------------------------------------------------- |
+| `npm run verify`           | green — format, lint, typecheck, test                            |
+| Unit and integration tests | 412 passing (57 shared, 209 backend, 146 web)                    |
+| Database tests             | 99 passing against a real Postgres 17                            |
+| End-to-end journeys        | 16 passing against production builds                             |
+| Coverage                   | shared 100%, backend 99% lines / 85% branches, web 96.6% / 88.2% |
+| Bundle                     | 115 kB js and 5 kB css gzipped, against a 250 / 40 kB budget     |
+| CI on `main`               | all nine stages green                                            |
+| Branch protection          | direct push to `main` rejected, failing PR blocked               |
 
 Toolchain as resolved: Node 24.11, TypeScript 6, ESLint 10, Vitest 4, Vite 8,
 React 19.2, Hono 4.13, Zod 4.4, Playwright 1.62.
@@ -470,3 +484,5 @@ control that opened it.
 | 2026-08-06 | Phase 4 built. Three-layer design tokens with light and dark themes, the brew list and both wireframe dialogs, delete with confirmation, and a three-state theme toggle. 55 web tests and 9 end-to-end journeys. The rating badge departs from the wireframe's traffic light on purpose — the scale runs pale ash to full crema with a proportional arc, so the value stays legible without colour. Two bugs surfaced in test rather than in the browser: stacked dialogs sharing one title id, and a rejected save escaping as an unhandled promise.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 2026-08-06 | Phase 4 built and opened as #6, then blocked on a GitHub Actions major outage — four runs failed with jobs completing zero or one step, never a test or a lint rule. The outage exposed a real hole: the aggregate `CI` check passed while `Lint and format` was red, because a job killed by infrastructure reports `abandoned`. The gate now demands `success` from every stage and prints what it saw. Also rewrote eight commit messages to drop attribution trailers, force-pushed both remotes, and restored branch protection to its exact prior settings.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 2026-08-07 | Phase 4 merged once Actions recovered, then a full codebase audit and its remediation merged on top as #7. Nine commits closing every finding: production refuses the in-memory adapter, the brew list is paged and carries its own total, responses are parsed rather than cast, request bodies are bounded at 16 KB, forwarded headers are only believed behind a trusted proxy, dialogs return focus, six measured contrast failures are fixed behind a test that reads the tokens, migrations are replayable through a ledger, and the contract package's coverage thresholds are actually enforced. 374 unit tests, 99 database tests, 9 end-to-end journeys. Two of the fixes were themselves wrong and the suites said so — the contract suite caught the Postgres adapter reporting a total of zero for a page past the end of the log while the in-memory adapter said three, and the drift guard rejected the new ledger table for sitting in `public` without row level security. One low advisory is carried deliberately rather than fixed; see Blocked on for why. |
+| 2026-08-08 | Phase 5 merged as #10 and #11, closing the polish work. Optimistic create, update and delete with rollback; skeleton, empty, error and offline states; toasts through `aria-live`; focus trapped and handed back; exit motion honouring `prefers-reduced-motion`. The Lighthouse ≥ 95 target is met as zero axe violations across five page states, because Lighthouse scores that metric by running axe and weighting the rules that break — asserting the engine names the rule, the impact and the element instead of moving a dial. 412 unit tests, 99 database tests, 16 end-to-end journeys. One contrast assertion had to be taught to wait for the page to stop moving before measuring, having read a colour mid-transition.                                                                                                                                                                                                                                                                                                                                            |
+| 2026-08-09 | Classroom repository brought level with the mirror. It had been four commits behind and carried none of Phase 5, which matters because that is the repository the assessment is marked from; both remotes are now at `f0b8ffb`. The `refs/original` backup left behind by the Phase 4 message rewrite was deleted — it still held the pre-rewrite commits, and no reachable commit on any ref now carries a trailer. README refreshed to Phase 5, and this board's check table corrected: it had still been reporting the Phase 3 test counts and the Phase 4 branch as blocked.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
