@@ -22,12 +22,13 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 3     | API — Hono, services, in-memory repository    | **done**    | 100%     |
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
-| 6     | AI — Quick Log, Coach agent, guardrails       | not started | 0%       |
+| 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 10%      |
 | 7     | Ship — Vercel, docs, demo                     | not started | 0%       |
 
-**Overall: 7 of 8 phases complete.** 412 unit tests, 99 database tests and 16
-end-to-end journeys passing, `main` protected and green. Phase 5 closes the
-polish work; the AI surfaces and deployment are what remain.
+**Overall: 7 of 8 phases complete, and the eighth has started.** 464 unit tests,
+99 database tests and 16 end-to-end journeys passing, `main` protected and
+green. Supabase is connected, so the brief is now satisfied in full and what
+remains is the work that goes beyond it: the AI surfaces, and deployment.
 
 ---
 
@@ -95,11 +96,25 @@ runs v1, seeded from the same demo data as `seed.sql`, and the Drizzle one
 written against the real schema and proven against a real Postgres while staying
 switched off.
 
-The application still runs entirely on the in-memory adapter. No connection
-string, no Supabase project, nothing to provision — exactly as intended. The
-schema is ready and waiting rather than wired in, and now so is the code that
-would talk to it: flipping `DATA_SOURCE` to `postgres` changes no application
-code, and the contract suite is the evidence rather than the intention.
+**Supabase is connected, and the claim that the swap was a configuration change
+has now been tested rather than asserted.** A project was provisioned, the nine
+migrations applied to it, and `DATA_SOURCE=postgres` set — no application code
+was touched, exactly as the repository pattern promised. The 99 database tests
+pass against it, and the app serves the log from it: create, read, update, soft
+delete and the aggregate views, all over real HTTP against real Postgres. That
+closes the brief's ORM requirement, which the in-memory adapter had left open.
+
+Connecting it exposed a defect in the database suite that CI could not have
+caught, because CI always seeds. One test asserted that a brew method still
+referenced by a brew cannot be deleted — without creating that brew. It depended
+on a row `seed.sql` happens to leave behind, so against a migrated but unseeded
+database the assumption inverted: nothing referenced `v60`, the delete succeeded
+instead of being refused, and the vocabulary lost a row that every later test
+needed. One unstated precondition cost 52 failures, none of which named the
+cause. The test now arranges its own brew and cleans it up, and the fix is
+verified the only way that means anything — by running the whole suite against a
+migrated, unseeded database, where it now passes and leaves all eight methods
+intact.
 
 The repository lives in two places. `main` cannot be protected on the classroom
 repository — it belongs to the `Umuzi-classroom` organisation and this account
@@ -110,8 +125,8 @@ the same commit.
 | Check                      | Result                                                           |
 | -------------------------- | ---------------------------------------------------------------- |
 | `npm run verify`           | green — format, lint, typecheck, test                            |
-| Unit and integration tests | 412 passing (57 shared, 209 backend, 146 web)                    |
-| Database tests             | 99 passing against a real Postgres 17                            |
+| Unit and integration tests | 464 passing (71 shared, 247 backend, 146 web)                    |
+| Database tests             | 99 passing against Supabase, and against Postgres 17 unseeded    |
 | End-to-end journeys        | 16 passing against production builds                             |
 | Coverage                   | shared 100%, backend 99% lines / 85% branches, web 96.6% / 88.2% |
 | Bundle                     | 115 kB js and 5 kB css gzipped, against a 250 / 40 kB budget     |
@@ -398,7 +413,7 @@ control that opened it.
 
 ### Phase 6 — AI
 
-- [ ] Provider abstraction with a deterministic fake for tests
+- [x] Provider abstraction with a deterministic fake for tests
 - [ ] Quick Log — structured output parsed by `createBrewSchema`
 - [ ] Pre-filled form with inferred-field highlighting
 - [ ] Coach agent with `listBrews`, `getBrewStats`, `findSimilarBrews`,
@@ -486,3 +501,5 @@ control that opened it.
 | 2026-08-07 | Phase 4 merged once Actions recovered, then a full codebase audit and its remediation merged on top as #7. Nine commits closing every finding: production refuses the in-memory adapter, the brew list is paged and carries its own total, responses are parsed rather than cast, request bodies are bounded at 16 KB, forwarded headers are only believed behind a trusted proxy, dialogs return focus, six measured contrast failures are fixed behind a test that reads the tokens, migrations are replayable through a ledger, and the contract package's coverage thresholds are actually enforced. 374 unit tests, 99 database tests, 9 end-to-end journeys. Two of the fixes were themselves wrong and the suites said so — the contract suite caught the Postgres adapter reporting a total of zero for a page past the end of the log while the in-memory adapter said three, and the drift guard rejected the new ledger table for sitting in `public` without row level security. One low advisory is carried deliberately rather than fixed; see Blocked on for why. |
 | 2026-08-08 | Phase 5 merged as #10 and #11, closing the polish work. Optimistic create, update and delete with rollback; skeleton, empty, error and offline states; toasts through `aria-live`; focus trapped and handed back; exit motion honouring `prefers-reduced-motion`. The Lighthouse ≥ 95 target is met as zero axe violations across five page states, because Lighthouse scores that metric by running axe and weighting the rules that break — asserting the engine names the rule, the impact and the element instead of moving a dial. 412 unit tests, 99 database tests, 16 end-to-end journeys. One contrast assertion had to be taught to wait for the page to stop moving before measuring, having read a colour mid-transition.                                                                                                                                                                                                                                                                                                                                            |
 | 2026-08-09 | Classroom repository brought level with the mirror. It had been four commits behind and carried none of Phase 5, which matters because that is the repository the assessment is marked from; both remotes are now at `f0b8ffb`. The `refs/original` backup left behind by the Phase 4 message rewrite was deleted — it still held the pre-rewrite commits, and no reachable commit on any ref now carries a trailer. README refreshed to Phase 5, and this board's check table corrected: it had still been reporting the Phase 3 test counts and the Phase 4 branch as blocked.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 2026-08-09 | Phase 6 opened with the AI seam: an `AiProvider` interface, a deterministic fake that needs no key, and the contract suite written before the adapter it will judge. `BrewProposal` is deliberately not `CreateBrewInput`, so a candidate cannot reach the repository by accident. No `createAiProvider` yet — the honest version cannot exist until there is a provider to return, or health would report `ai.enabled: true` while every AI route answered 503. 464 unit tests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 2026-08-09 | Supabase connected and the brief's ORM requirement closed. Nine migrations applied to a real project and `DATA_SOURCE` set to postgres with no application code touched — the repository pattern's central claim, tested rather than asserted. The app now serves the log from Supabase over real HTTP: create, read, update, soft delete and the aggregate views. Two things surfaced. The pooler host had to be found by probing regions, because Supavisor answers a wrong region, a wrong `aws-N` prefix and a wrong project ref with the same "tenant not found". And a database test that never arranged its own brew depended on a row seed.sql leaves behind, so against a migrated but unseeded database it deleted the `v60` method it was asserting could not be deleted, failing 52 tests downstream with nothing naming the cause. Fixed to arrange and clean up after itself, and verified against a migrated, unseeded database where the suite now passes with all eight methods intact.                                                                         |

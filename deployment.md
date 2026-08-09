@@ -44,6 +44,16 @@ Set in the Vercel dashboard only. Nothing sensitive is ever committed.
 | `GEMINI_API_KEY` | secret, if the AI features are enabled for the deployment |
 | `GEMINI_MODEL`   | a Gemini Flash model id                                   |
 
+The Supabase project is `gctoggnyblkqffpdzmcc`, and its transaction pooler is
+`aws-1-eu-west-1.pooler.supabase.com:6543`. The host is recorded because it is
+not a secret and because guessing it is expensive: Supavisor answers a wrong
+region, a wrong `aws-N` prefix and a wrong project ref with the identical
+message, `tenant/user not found`, so a typo in any of the three looks exactly
+like the other two. Copy the string from the dashboard rather than assembling
+it. Note also that a password containing `@`, `:`, `/`, `?`, `#`, `[` or `]`
+must be percent-encoded, or the URI parser reads the password as part of the
+host and the failure appears somewhere unrelated.
+
 `DATA_SOURCE` must be `postgres` here, and the environment loader enforces it
 rather than trusting the operator: a production process configured for `memory`
 refuses to boot and says why. The store is per-instance, the deploy target is
