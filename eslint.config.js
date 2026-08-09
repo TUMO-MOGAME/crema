@@ -97,6 +97,44 @@ export default tseslint.config(
     },
   },
 
+  /**
+   * Nothing that ships may reach for test code.
+   *
+   * `backend/src/**` is bundled from `src/server.ts` for the deployment, so an
+   * import here is a runtime dependency there. A barrel file re-exporting
+   * `ai-provider.contract` put vitest into that graph and failed the deploy
+   * with `Could not resolve "vitest"` — while building fine everywhere
+   * devDependencies exist, which includes every CI stage. The pipeline could
+   * not have caught it, so the rule catches it instead.
+   *
+   * Test files and the `*.contract.ts` suites they call are exempt below.
+   */
+  {
+    files: ['backend/**/*.ts', 'frontend/src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/*.contract.ts', '**/test/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'vitest',
+              message:
+                'Test-only. Importing it from shipped code puts vitest in the production bundle.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['**/*.contract', '**/*.contract.ts'],
+              message:
+                'Contract suites are test code and import vitest. Import them from a *.test.ts file, and never re-export one from a barrel.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Build scripts talk to the operator through stdout; that is their interface.
   {
     files: ['scripts/**/*.mjs'],
