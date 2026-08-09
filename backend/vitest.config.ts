@@ -4,8 +4,13 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
-    // Database tests need a live Postgres and run under vitest.db.config.ts.
-    exclude: ['src/**/*.db.test.ts'],
+    exclude: [
+      // Database tests need a live Postgres and run under vitest.db.config.ts.
+      'src/**/*.db.test.ts',
+      // AI tests call a hosted model, so they need a key and cost money per
+      // run. They run under vitest.ai.config.ts.
+      'src/**/*.ai.test.ts',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'lcov'],
@@ -29,6 +34,12 @@ export default defineConfig({
         // number worth having.
         'src/db/client.ts',
         'src/repositories/drizzle-brew.repository.ts',
+        // The Gemini adapter, and the same argument a third time. It is covered
+        // by `gemini-ai-provider.ai.test.ts`, which runs the shared provider
+        // contract against the real model. Counting it here would report how
+        // much of it the *fake's* tests reach, which is none of it — a number
+        // that would only ever be misleading.
+        'src/ai/gemini-ai-provider.ts',
       ],
       thresholds: {
         lines: 80,
