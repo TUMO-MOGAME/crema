@@ -123,12 +123,18 @@ brief.
 Without the key, `/api/coach/*` returns `503` with a clear code, the UI hides
 those surfaces, and every other feature is unaffected.
 
-## 6. Optional: connect Supabase
+## 6. Connect Supabase — optional locally, required in production
 
 The full schema ships as ordered SQL migrations in `supabase/migrations/`. The
 running app does not use them yet — it uses the in-memory adapter — because
 persistence sits behind an interface. See
 [PLANNING.md §5](./PLANNING.md#5-database-strategy--migrations-now-connection-later).
+
+Optional is meant literally for local work: clone, install, run, and the app
+works with nothing to provision. It does not extend to a deployment. The
+in-memory store is per-instance, so on a serverless host every write would be
+lost at the next cold start, and the environment loader refuses to boot a
+production process on it rather than letting that happen quietly.
 
 To switch over:
 

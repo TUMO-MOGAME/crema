@@ -39,9 +39,18 @@ Set in the Vercel dashboard only. Nothing sensitive is ever committed.
 | ---------------- | --------------------------------------------------------- |
 | `NODE_ENV`       | `production`                                              |
 | `CORS_ORIGIN`    | the `crema-web` production domain                         |
-| `DATA_SOURCE`    | `memory`                                                  |
+| `DATA_SOURCE`    | `postgres`                                                |
+| `DATABASE_URL`   | secret, the Supabase pooled connection string             |
 | `GEMINI_API_KEY` | secret, if the AI features are enabled for the deployment |
 | `GEMINI_MODEL`   | a Gemini Flash model id                                   |
+
+`DATA_SOURCE` must be `postgres` here, and the environment loader enforces it
+rather than trusting the operator: a production process configured for `memory`
+refuses to boot and says why. The store is per-instance, the deploy target is
+serverless, and so every write would be lost at the next cold start with nothing
+reporting it — a silent data-loss failure is worse than a loud startup one.
+Provisioning the Supabase project and applying the migration set is therefore a
+prerequisite of the first deploy, not a follow-up to it.
 
 **`crema-web`**
 
