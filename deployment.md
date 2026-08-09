@@ -32,8 +32,37 @@ record here instead of two that must agree.
 The rewrite is a rewrite rather than a redirect, so `/api/health` reaches the
 service with its path intact and Hono routes it exactly as it does locally. And
 because the browser only ever talks to the origin it was loaded from, there is
-no CORS exchange to configure and the tight `connect-src 'self'` in
-`frontend/vercel.json` already covers the API without naming a domain.
+no CORS exchange to configure and the tight `connect-src 'self'` in the frontend
+service's headers already covers the API without naming a domain.
+
+## Frontend headers and SPA fallback
+
+The frontend's security headers, cache policy and SPA fallback live in the
+`frontend` service object of the root `vercel.json`, not in a file of their own.
+Vercel reads one `vercel.json`, at the project root; in services mode the
+project root is the repository, so a `frontend/vercel.json` is dead
+configuration — and the schema rejects `"//"` comment keys inside rules besides,
+which is why the reasoning is recorded here instead:
+
+- The API sets its own headers through Hono's `secureHeaders` middleware. The
+  service-scoped headers are the other half: the SPA is served straight from the
+  CDN, where no application code runs on the way out.
+- The CSP is deliberately tight because the app needs almost nothing: no
+  third-party scripts, no external fonts, no analytics, no frames. One origin
+  serves everything, so `connect-src 'self'` covers the API with no domain
+  named.
+- `style-src` carries `'unsafe-inline'` and that is not an oversight: the rating
+  dial sets its arc colour through an inline `style` attribute, which CSP counts
+  as inline styling. A nonce needs a server rendering the document, which a
+  static CDN deploy does not have. Inline styles cannot execute; the directive
+  that matters for execution is `script-src`, and it allows nothing but this
+  origin.
+- Hashed `/assets` are cached indefinitely; `/index.html` is never served stale,
+  or a new deploy's document would still point at deleted assets.
+- The service-scoped rewrite to `/index.html` is what makes a deep link survive
+  a hard refresh. Routing into a service is final — an unmatched path inside the
+  frontend service returns its 404 rather than falling back to the top-level
+  route table, so the fallback has to live inside the service.
 
 Because the root directory is the repository itself, `@crema/shared` resolves
 the way it does locally. The package builds to JavaScript through its own
