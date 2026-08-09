@@ -1,6 +1,6 @@
-import { env, isAiEnabled, type Env } from '../config/env';
-import type { AiProvider } from './ai-provider';
-import { GeminiAiProvider } from './gemini-ai-provider';
+import { env, isAiEnabled, type Env } from '../config/env.js';
+import type { AiProvider } from './ai-provider.js';
+import { GeminiAiProvider } from './gemini-ai-provider.js';
 
 /**
  * The one place that decides whether this deployment has an AI at all.
@@ -50,4 +50,4 @@ export function createAiProvider(config: Env = env): AiProvider | null {
  * Test files import the fake and the contract from their own modules directly,
  * which is what the repository tests already do.
  */
-export type { AiCallOptions, AiProvider, AiUsage, BrewProposalResult } from './ai-provider';
+export type { AiCallOptions, AiProvider, AiUsage, BrewProposalResult } from './ai-provider.js';

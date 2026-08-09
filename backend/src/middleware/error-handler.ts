@@ -1,7 +1,7 @@
 import type { ApiErrorBody } from '@crema/shared';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { AppError } from '../lib/app-error';
+import { AppError } from '../lib/app-error.js';
 
 function body(
   code: ApiErrorBody['error']['code'],

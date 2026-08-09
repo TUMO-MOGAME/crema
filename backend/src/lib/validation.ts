@@ -1,7 +1,7 @@
 import type { FieldError } from '@crema/shared';
 import type { Context } from 'hono';
 import type { output as ZodOutput, ZodError, ZodType } from 'zod';
-import { AppError } from './app-error';
+import { AppError } from './app-error.js';
 
 /**
  * The bridge between Zod and the API's error envelope.

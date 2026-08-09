@@ -8,8 +8,8 @@ import {
 } from '@crema/shared';
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '../app';
-import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository';
+import { createApp } from '../app.js';
+import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository.js';
 
 /**
  * Every row of the API table in PLANNING section 4.4, over the real app.

@@ -13,9 +13,9 @@ import {
   type UpdateBrewInput,
 } from '@crema/shared';
 import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
-import type { Database } from '../db/client';
-import { brewMethods, brews, type BrewRow, type NewBrewRow } from '../db/schema';
-import { toIsoInstant, type BrewFilter, type BrewRepository } from './brew.repository';
+import type { Database } from '../db/client.js';
+import { brewMethods, brews, type BrewRow, type NewBrewRow } from '../db/schema.js';
+import { toIsoInstant, type BrewFilter, type BrewRepository } from './brew.repository.js';
 
 /**
  * The Postgres adapter. Written, tested, and not switched on.

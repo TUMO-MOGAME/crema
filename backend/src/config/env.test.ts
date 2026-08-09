@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAiEnabled, loadEnv } from './env';
+import { isAiEnabled, loadEnv } from './env.js';
 
 describe('loadEnv', () => {
   it('runs on defaults with nothing configured', () => {

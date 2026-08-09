@@ -1,6 +1,6 @@
 import { isApiErrorBody, type ApiErrorBody } from '@crema/shared';
 import { describe, expect, it } from 'vitest';
-import { createApp, MAX_BODY_BYTES } from './app';
+import { createApp, MAX_BODY_BYTES } from './app.js';
 
 const app = createApp();
 

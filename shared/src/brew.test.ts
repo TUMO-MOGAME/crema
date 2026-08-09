@@ -5,8 +5,13 @@ import {
   createBrewSchema,
   formatBrewRatio,
   updateBrewSchema,
-} from './brew';
-import { BREW_METHODS, BREW_METHOD_SLUGS, brewMethodLabel, isBrewMethodSlug } from './brew-methods';
+} from './brew.js';
+import {
+  BREW_METHODS,
+  BREW_METHOD_SLUGS,
+  brewMethodLabel,
+  isBrewMethodSlug,
+} from './brew-methods.js';
 
 const validBrew = {
   beans: 'Zimbabwean highlands',

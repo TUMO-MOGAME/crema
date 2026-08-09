@@ -19,7 +19,7 @@ import {
   toStoredRatio,
   type BrewFilter,
   type BrewRepository,
-} from './brew.repository';
+} from './brew.repository.js';
 
 /**
  * The adapter v1 runs on.

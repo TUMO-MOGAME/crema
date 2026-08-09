@@ -5,7 +5,7 @@ import {
   brewProposalSchema,
   EMPTY_BREW_PROPOSAL,
   quickLogRequestSchema,
-} from './ai';
+} from './ai.js';
 
 describe('quickLogRequestSchema', () => {
   it('accepts a sentence describing a brew', () => {

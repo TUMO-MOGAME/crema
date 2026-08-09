@@ -1,7 +1,7 @@
 import { brewStatsSchema, type BrewStats, type CreateBrewInput } from '@crema/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '../app';
-import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository';
+import { createApp } from '../app.js';
+import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository.js';
 
 const input: CreateBrewInput = {
   beans: 'Ethiopian Yirgacheffe',

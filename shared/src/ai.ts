@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createBrewSchema } from './brew';
+import { createBrewSchema } from './brew.js';
 
 /**
  * The contract for the AI surfaces, shared by both sides for the same reason

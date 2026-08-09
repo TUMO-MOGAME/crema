@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { describeAiProviderContract } from './ai-provider.contract';
-import { FakeAiProvider } from './fake-ai-provider';
+import { describeAiProviderContract } from './ai-provider.contract.js';
+import { FakeAiProvider } from './fake-ai-provider.js';
 
 describeAiProviderContract('FakeAiProvider', {
   fresh: () => Promise.resolve(new FakeAiProvider()),

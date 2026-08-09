@@ -3,20 +3,20 @@ import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { requestId } from 'hono/request-id';
 import { secureHeaders } from 'hono/secure-headers';
-import { createAiProvider, type AiProvider } from './ai';
-import { env } from './config/env';
-import { AppError } from './lib/app-error';
-import { errorHandler, notFoundHandler } from './middleware/error-handler';
-import { rateLimit } from './middleware/rate-limit';
-import { createBrewRepository, type BrewRepository } from './repositories';
-import { createAiRoutes } from './routes/ai';
-import { brewMethodRoutes } from './routes/brew-methods';
-import { createBrewRoutes } from './routes/brews';
-import { createHealthRoutes } from './routes/health';
-import { createStatsRoutes } from './routes/stats';
-import { BrewService } from './services/brew.service';
-import { QuickLogService } from './services/quick-log.service';
-import type { AppEnv } from './types';
+import { createAiProvider, type AiProvider } from './ai/index.js';
+import { env } from './config/env.js';
+import { AppError } from './lib/app-error.js';
+import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
+import { rateLimit } from './middleware/rate-limit.js';
+import { createBrewRepository, type BrewRepository } from './repositories/index.js';
+import { createAiRoutes } from './routes/ai.js';
+import { brewMethodRoutes } from './routes/brew-methods.js';
+import { createBrewRoutes } from './routes/brews.js';
+import { createHealthRoutes } from './routes/health.js';
+import { createStatsRoutes } from './routes/stats.js';
+import { BrewService } from './services/brew.service.js';
+import { QuickLogService } from './services/quick-log.service.js';
+import type { AppEnv } from './types.js';
 
 /**
  * What the app needs from the outside world.

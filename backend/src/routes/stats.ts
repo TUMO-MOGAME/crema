@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import type { BrewService } from '../services/brew.service';
-import type { AppEnv } from '../types';
+import type { BrewService } from '../services/brew.service.js';
+import type { AppEnv } from '../types.js';
 
 /**
  * Aggregates over the whole log.
