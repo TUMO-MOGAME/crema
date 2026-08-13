@@ -23,27 +23,29 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
 | 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 90%      |
-| 7     | Ship — Vercel, docs, demo                     | in progress | 40%      |
+| 7     | Ship — Vercel, docs, demo                     | in progress | 70%      |
 
 **Overall: planning and phases 0 through 5 are complete, and both remaining
 phases are under way.** 524 unit tests, 99 database tests, 15 provider tests and
-16 end-to-end journeys passing, `main` protected and green. Supabase is
-connected and the app is deployed: the third production deploy built green after
-the two failures the deployment log records. What remains is making the URL
-public, the rest of the AI surfaces, and the final documentation pass.
+16 end-to-end journeys passing, `main` protected and green. **The app is live**
+— serving from Supabase behind a single public origin with both AI surfaces
+enabled, verified end to end, and the URL recorded in
+[deployment.md](./deployment.md). What remains is the flavour tag extraction,
+the explicit no-key pass, and the final documentation sweep.
 
 ---
 
 ## Now
 
-**The app is deployed.** The five deployment fixes are merged to `main` on both
-remotes, and the production deploy of that commit built green — the third
-attempt, after the Root Directory and entrypoint failures the deployment log
-walks through. One Vercel project runs both workspaces as services behind a
-single origin, exactly as [deployment.md](./deployment.md) describes. The URL is
-not yet public: Vercel's deployment protection is on by default and every
-deployment URL answers with a login redirect until the dashboard toggle turns it
-off. The live URLs land in deployment.md the moment it does.
+**The app is live.** One Vercel project runs both workspaces as services behind
+a single public origin, the log serves from Supabase, and both AI surfaces are
+enabled — verified end to end, including a sentence read through real Gemini in
+production. The URLs are in [deployment.md](./deployment.md), together with the
+full deploy log: two build failures, a protection wall, and an environment
+variable three days older than the plan revision it contradicted, each recorded
+with what fixed it. The last of those is worth the read — the env loader's
+refusal to run production on the in-memory store fired exactly as designed, at
+the first misconfiguration it was written for.
 
 Phases 0, 1 and 2 are complete and verified. The monorepo runs, builds, tests
 and lints clean on a fresh install; every change to the portfolio repository has
@@ -168,13 +170,10 @@ React 19.2, Hono 4.13, Zod 4.4, Playwright 1.62.
 
 ## Blocked on
 
-**One dashboard toggle.** The production deploy is green, but every URL Vercel
-exposes for it redirects to a Vercel login: Deployment Protection ships enabled
-("Standard Protection") and the free plan offers no per-environment carve-out.
-Turning **Require Log In** off under Settings → Deployment Protection makes the
-production domain public. It is a dashboard action on the project owner's
-account, so it cannot be scripted from the repository — everything else about
-the deploy is code and is done.
+**Nothing.** The deploy is live and public, the environment is correct, and
+every suite is green. The two dashboard-side blockers this section carried — the
+deployment protection toggle and the `DATA_SOURCE` variable predating the plan
+revision — are both resolved and recorded in the deployment log.
 
 One flake is worth naming so the next person to hit it does not go looking for a
 bug in their own change. On Windows, `npm run verify` intermittently reports the
@@ -486,8 +485,9 @@ revision and what it removed.
 - [x] Environment variables set in Vercel only
 - [x] Preview deployments on pull requests
 - [x] Production deploy green
-- [ ] Production URL public — blocked on the Deployment Protection toggle
-- [ ] `deployment.md` with live URLs
+- [x] Production URL public — deployment protection off, environment corrected,
+      verified end to end including real Gemini in production
+- [x] `deployment.md` with live URLs
 - [ ] `README.md`
 - [ ] `Documentation.md`
 - [ ] Screenshots and a demo recording
@@ -565,3 +565,4 @@ revision and what it removed.
 | 2026-08-13 | Quick Log reaches the form, which closes the feature. A sentence box sits at the top of the Add dialog — only there, and only when `/api/health` says the deployment has an AI — and hands the sentence to `POST /api/ai/quick-log`. What comes back pre-fills the form as values to check: fields the model inferred rather than was told wear an accent chip and border, the mark is part of the control's accessible description rather than only a colour, and it comes off the moment the reader edits the field. A proposed `brewedAt` is said in a sentence above the buttons, because it is the one field with no visible control and a value that rode along silently would be exactly the surprise the confirmation step exists to prevent. Nothing reaches `POST /api/brews` until Save — the test suite asserts that directly. Fourteen new web tests, two new measured contrast pairings for the chip and its border. 500 unit tests.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 2026-08-13 | The Brew Coach agent, behind the seam that waited for it. `POST /api/ai/coach` answers one question about the log as a stream of server-sent events — text as it is generated, a readable trace line for every tool call, any proposal the agent makes, and a final accounting of tokens and tool calls — with the event vocabulary in `@crema/shared`, parsed by the backend's tests and soon the frontend from one schema. The agent holds four tools: three read-only over the same repository the routes use, and `proposeBrew`, which the provider owns and pushes through the same normalisation Quick Log uses, so a candidate a form would refuse cannot reach one. The 503 for a keyless deployment lands before the stream opens and is a real status code; a failure mid-answer becomes the stream's last event, in our words, because model errors can quote their input. The fake answers the same questions from the same tools deterministically, which is what lets the route suite run the whole loop keyless — and the contract grew five coach cases that the real model then passed unchanged on the first run. 519 unit tests, 15 against Gemini.                                                                                                                                                                                                                   |
 | 2026-08-13 | The coach reaches the screen, which completes the surface. A Coach button sits beside Add — only when health says there is an AI — and opens a panel that asks one question and renders the answer as it streams. The trace is the deliberate part: every tool call arrives as a readable line and is listed where the reader can see it, collapsible once the answer is in, with the token cost printed beside the answer's provenance because cost visibility is a stated guardrail rather than a debug detail. A proposal renders as a card whose one action opens the Add form pre-filled and marked, through the same seam Quick Log fills it — the form's starting values and its mid-session merges are deliberately two different channels, so the coach's hand-off can never clobber a half-typed brew and Quick Log's merge can never restart one. The stream is read by hand because EventSource cannot POST, and every event is parsed against the shared schema at the seam; the test stub answers with real SSE bytes so the parsing is what the suite exercises. 524 unit tests.                                                                                                                                                                                                                                                                                          |
+| 2026-08-13 | Live, and the brief's last requirement closed. The deployment protection toggle came off and every request answered 500 — a successful build with an instant runtime crash, which is the env loader's signature. The project's variables dated from 2026-08-10, when the plan still said `DATA_SOURCE=memory` for v1: production plus the in-memory store is the one configuration the loader refuses on purpose, and it fired three days after it was written at the first person it was written for. The value edited to `postgres`, the stale `VITE_API_BASE_URL` and `CORS_ORIGIN` from the two-project plan deleted before the first could point the built bundle at a retired domain, and the redeploy verified end to end: health reporting postgres with AI enabled, the log served from Supabase, deep links surviving a hard refresh, and a sentence read through real Gemini into a validated proposal. The live URLs are in deployment.md, which was the one graded item still open.                                                                                                                                                                                                                                                                                                                                                                                         |
