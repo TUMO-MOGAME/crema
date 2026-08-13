@@ -172,19 +172,21 @@ commit. There is no drift, and no hand-written duplicate types.
 
 ### 4.4 API surface
 
-| Method   | Path                    | Success            | Errors                                       |
-| -------- | ----------------------- | ------------------ | -------------------------------------------- |
-| `GET`    | `/api/brews`            | `200`              | `400` bad filter                             |
-| `GET`    | `/api/brews?method=v60` | `200`              | `400` unknown method                         |
-| `GET`    | `/api/brews/:id`        | `200`              | `404`                                        |
-| `POST`   | `/api/brews`            | `201` + `Location` | `400` validation, `422` semantic             |
-| `PATCH`  | `/api/brews/:id`        | `200`              | `400`, `404`, `422` semantic                 |
-| `DELETE` | `/api/brews/:id`        | `204`              | `404`                                        |
-| `GET`    | `/api/brew-methods`     | `200`              | —                                            |
-| `GET`    | `/api/stats`            | `200`              | — (empty log is zeroes, not 404)             |
-| `POST`   | `/api/ai/quick-log`     | `200`              | `400`, `413`, `422` unreadable, `429`, `503` |
-| `POST`   | `/api/ai/coach`         | `200` streamed     | `429`, `503` when AI disabled                |
-| `GET`    | `/api/health`           | `200`              | —                                            |
+| Method   | Path                         | Success            | Errors                                                                                |
+| -------- | ---------------------------- | ------------------ | ------------------------------------------------------------------------------------- |
+| `GET`    | `/api/brews`                 | `200`              | `400` bad filter                                                                      |
+| `GET`    | `/api/brews?method=v60`      | `200`              | `400` unknown method                                                                  |
+| `GET`    | `/api/brews/:id`             | `200`              | `404`                                                                                 |
+| `POST`   | `/api/brews`                 | `201` + `Location` | `400` validation, `422` semantic                                                      |
+| `PATCH`  | `/api/brews/:id`             | `200`              | `400`, `404`, `422` semantic                                                          |
+| `DELETE` | `/api/brews/:id`             | `204`              | `404`                                                                                 |
+| `GET`    | `/api/brew-methods`          | `200`              | —                                                                                     |
+| `GET`    | `/api/stats`                 | `200`              | — (empty log is zeroes, not 404)                                                      |
+| `GET`    | `/api/brews/:id/flavor-tags` | `200`              | `404`                                                                                 |
+| `POST`   | `/api/ai/quick-log`          | `200`              | `400`, `413`, `422` unreadable, `429`, `503`                                          |
+| `POST`   | `/api/ai/coach`              | `200` streamed     | `400`, `413`, `429`, `503` — a mid-stream failure is the stream's final `error` event |
+| `POST`   | `/api/ai/flavor-tags`        | `200`              | `400`, `404` no such brew, `429`, `503`                                               |
+| `GET`    | `/api/health`                | `200`              | —                                                                                     |
 
 The AI routes were planned as `/api/coach/*` and built under `/api/ai/*`. The
 namespace changed so the tighter rate budget — a request here costs a model
@@ -332,8 +334,9 @@ stated in the README, because it is a design position, not an oversight.
 
 ### 6.2 Brew Coach — a tool-calling agent over your own log
 
-An agent loop (AI SDK `generateText` with `tools` and a `stopWhen` step limit)
-with four read-only tools:
+An agent loop (AI SDK `streamText` with `tools` and a `stopWhen` step limit —
+the plan said `generateText`, revised because an answer that takes ten seconds
+to compose and arrives all at once reads as a hang) with four read-only tools:
 
 | Tool               | Purpose                                                      |
 | ------------------ | ------------------------------------------------------------ |
@@ -354,10 +357,18 @@ is the difference between a demo and a product.
 
 ### 6.3 Flavour tagging
 
-On save, tasting notes are normalised into a controlled vocabulary of flavour
-tags (`stone fruit`, `chocolate`, `floral`, `nutty`) written to
-`brew_flavor_tags`. This turns free text into something filterable and
-chartable, and it is the reason that join table exists.
+After a save, tasting notes are normalised into the controlled vocabulary of
+flavour tags — the fourteen top-level SCA flavour wheel categories the migration
+seeds — and written to `brew_flavor_tags` with `source: 'ai'` and a confidence.
+This turns free text into something filterable and chartable, and it is the
+reason that join table exists.
+
+As built, "on save" became "asked for after the save": the client requests
+extraction in its own request once the brew is stored, so the model's latency
+never touches the save and a failed extraction loses tags, never brews. A
+re-extraction replaces the model's previous opinion but never a human-applied
+tag — the provenance column is load-bearing, and the `(brew, tag)` primary key
+enforces the rule in Postgres.
 
 ### 6.4 Guardrails
 
@@ -491,42 +502,50 @@ reviewer can click.
 ## 9. Acceptance criteria
 
 Every line is a check that must be green before the project is called done.
+Ticked 2026-08-13, each against evidence rather than memory: the suites named in
+STATUS, the live deployment, or the repository itself.
 
 **Brief requirements**
 
-- [ ] Create a brew and persist it
-- [ ] List view of all brews
-- [ ] Filter list by brew method
-- [ ] Edit and update a brew
-- [ ] Delete a brew
-- [ ] Frontend framework in `frontend/`, backend framework in `backend/`
-- [ ] CSS framework in use
-- [ ] ORM over a SQL database
-- [ ] Sensible component decomposition
-- [ ] UI follows the wireframes
-- [ ] Responsive at 320px, 768px, 1280px
-- [ ] Page title reads `Brews: {brewCount}` and updates live
-- [ ] Create and edit forms block submission on any blank field
-- [ ] JSON API exposing CRUD at `/api/brews`
-- [ ] Server-side validation of every field
-- [ ] Correct HTTP status codes throughout
-- [ ] `Documentation.md` with setup instructions and description
-- [ ] Tidy git history, one descriptive commit per feature
-- [ ] No hardcoded secrets, all config from env, `.env.example` present
-- [ ] Deployed, with the URL in `deployment.md`
+- [x] Create a brew and persist it — end-to-end suite, and live against Supabase
+- [x] List view of all brews
+- [x] Filter list by brew method
+- [x] Edit and update a brew
+- [x] Delete a brew
+- [x] Frontend framework in `frontend/`, backend framework in `backend/`
+- [x] CSS framework in use — Tailwind v4
+- [x] ORM over a SQL database — Drizzle over Supabase Postgres, live
+- [x] Sensible component decomposition
+- [x] UI follows the wireframes — one recorded departure, the rating badge
+- [x] Responsive at 320px, 768px, 1280px
+- [x] Page title reads `Brews: {brewCount}` and updates live — asserted in tests
+- [x] Create and edit forms block submission on any blank field — shared schema,
+      asserted on both sides
+- [x] JSON API exposing CRUD at `/api/brews`
+- [x] Server-side validation of every field
+- [x] Correct HTTP status codes throughout — every row of section 4.4 tested
+- [x] `Documentation.md` with setup instructions and description
+- [x] Tidy git history, one descriptive commit per feature
+- [x] No hardcoded secrets, all config from env, `.env.example` present —
+      `gitleaks` scans full history in CI
+- [x] Deployed, with the URL in `deployment.md` — live and verified
 
 **Beyond the brief**
 
-- [ ] Full Supabase migration set, reviewed and ordered
-- [ ] Repository pattern with two adapters and a shared contract test suite
-- [ ] Quick Log natural-language capture with human confirmation
-- [ ] Brew Coach agent with four tools and a visible trace
-- [ ] App fully functional with no `GEMINI_API_KEY` set
-- [ ] `main` protected, all nine CI stages green
-- [ ] `gitleaks` clean across full history
-- [ ] Coverage thresholds met
-- [ ] Playwright journey passing
-- [ ] Keyboard-navigable, WCAG AA contrast, Lighthouse accessibility ≥ 95
+- [x] Full Supabase migration set, reviewed and ordered — applied to the live
+      project
+- [x] Repository pattern with two adapters and a shared contract test suite — 46
+      contract cases, both adapters, real Postgres in CI
+- [x] Quick Log natural-language capture with human confirmation
+- [x] Brew Coach agent with four tools and a visible trace
+- [x] App fully functional with no `GEMINI_API_KEY` set — the end-to-end suite
+      runs keyless
+- [x] `main` protected, all nine CI stages green
+- [x] `gitleaks` clean across full history
+- [x] Coverage thresholds met
+- [x] Playwright journey passing — sixteen journeys
+- [x] Keyboard-navigable, WCAG AA contrast, Lighthouse accessibility ≥ 95 — met
+      as zero axe violations, with every colour pairing measured from the tokens
 
 ---
 
@@ -548,16 +567,17 @@ these phases is what STATUS.md tracks.
 
 Phases 3 and 4 can overlap once the API contract in `shared/` is frozen.
 
-As built, phases 0 through 5 are done, phase 6 is under way with Quick Log
-served by the API, and phase 7's deploy is live from a single Vercel project
-rather than the two planned — the revision section 8 records. The one deliberate
-departure from a wireframe is the rating badge in phase 4: the wireframe draws a
-traffic light, and the badge keeps its shape, size and position but runs the
-scale through the drink instead — pale ash at 1, full crema at 5, with an arc
-filled to `rating / 5`. Red against green is the one pairing a colour-blind
-reader cannot separate, and here the colour is doing the scanning work down a
-list. The value is now carried three ways, so no reader depends on any one of
-them.
+As built, phases 0 through 6 are done and the app is live: all three AI surfaces
+from section 6 shipped behind the provider seam, each held to a contract suite
+the real model passes unchanged, and the deploy serves from a single Vercel
+project rather than the two planned — the revision section 8 records. What
+remains of phase 7 is documentation. The one deliberate departure from a
+wireframe is the rating badge in phase 4: the wireframe draws a traffic light,
+and the badge keeps its shape, size and position but runs the scale through the
+drink instead — pale ash at 1, full crema at 5, with an arc filled to
+`rating / 5`. Red against green is the one pairing a colour-blind reader cannot
+separate, and here the colour is doing the scanning work down a list. The value
+is now carried three ways, so no reader depends on any one of them.
 
 ---
 
