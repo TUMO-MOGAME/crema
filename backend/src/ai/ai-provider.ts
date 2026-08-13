@@ -1,4 +1,4 @@
-import type { BrewProposal, BrewStats, CoachToolName } from '@crema/shared';
+import type { BrewProposal, BrewStats, CoachToolName, FlavorTagSlug } from '@crema/shared';
 
 /**
  * The seam between this application and whatever is generating text.
@@ -78,6 +78,32 @@ export interface AiProvider {
     tools: CoachTools,
     options?: AiCallOptions,
   ): AsyncIterable<CoachAnswerEvent>;
+
+  /**
+   * Read tasting notes and name the flavour tags they support.
+   *
+   * The vocabulary is closed — the fourteen SCA categories the migration
+   * seeds — and a provider may only answer from it. Notes that describe no
+   * recognisable flavour yield an empty list, which is a success for the same
+   * reason an empty proposal is: the honest answer to "what does 'fine I
+   * guess' taste of" is nothing.
+   *
+   * Confidence is per tag and within [0, 1]. What a caller does with the tags
+   * — storing them with provenance, showing them, ignoring them — is not the
+   * provider's business.
+   */
+  extractFlavorTags(tastingNotes: string, options?: AiCallOptions): Promise<FlavorTagExtraction>;
+}
+
+/** The tags the notes support, and what the reading cost. */
+export interface FlavorTagExtraction {
+  tags: ExtractedFlavorTag[];
+  usage: AiUsage;
+}
+
+export interface ExtractedFlavorTag {
+  slug: FlavorTagSlug;
+  confidence: number;
 }
 
 /**

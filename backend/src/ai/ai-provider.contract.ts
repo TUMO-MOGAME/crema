@@ -1,4 +1,4 @@
-import { brewProposalSchema, type CreateBrewInput } from '@crema/shared';
+import { brewProposalSchema, FLAVOR_TAG_SLUGS, type CreateBrewInput } from '@crema/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository.js';
 import type { AiProvider, CoachAnswerEvent, CoachTools } from './ai-provider.js';
@@ -195,6 +195,52 @@ export function describeAiProviderContract(providerName: string, harness: AiProv
           collect(provider.coach(A_QUESTION, counted, { signal: AbortSignal.abort() })),
         ).rejects.toThrow();
         expect(reads).toBe(0);
+      });
+    });
+
+    describe('extractFlavorTags', () => {
+      const NOTES = 'Blackcurrant, jasmine, tea-like and clean';
+
+      it('answers only from the vocabulary, each tag once, confidence in range', async () => {
+        const { tags } = await provider.extractFlavorTags(NOTES);
+
+        const slugs = tags.map((tag) => tag.slug);
+        expect(new Set(slugs).size).toBe(slugs.length);
+
+        for (const tag of tags) {
+          expect(FLAVOR_TAG_SLUGS).toContain(tag.slug);
+          expect(tag.confidence).toBeGreaterThanOrEqual(0);
+          expect(tag.confidence).toBeLessThanOrEqual(1);
+        }
+      });
+
+      it('reads berry and floral out of the documented notes', async () => {
+        const { tags } = await provider.extractFlavorTags(NOTES);
+        const slugs = tags.map((tag) => tag.slug);
+
+        // Blackcurrant is a berry and jasmine is a flower. A provider that
+        // cannot make those two calls is not tagging flavours.
+        expect(slugs).toContain('berry');
+        expect(slugs).toContain('floral');
+      });
+
+      it('treats notes with no recognisable flavour as an empty success', async () => {
+        const { tags } = await provider.extractFlavorTags('fine I guess');
+
+        expect(tags).toEqual([]);
+      });
+
+      it('reports what the call cost', async () => {
+        const { usage } = await provider.extractFlavorTags(NOTES);
+
+        expect(usage.inputTokens).toBeGreaterThan(0);
+        expect(usage.outputTokens).toBeGreaterThanOrEqual(0);
+      });
+
+      it('rejects an already-aborted call without doing the work', async () => {
+        await expect(
+          provider.extractFlavorTags(NOTES, { signal: AbortSignal.abort() }),
+        ).rejects.toThrow();
       });
     });
   });

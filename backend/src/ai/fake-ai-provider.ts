@@ -6,6 +6,7 @@ import {
   type BrewMethodSlug,
   type BrewProposal,
   type BrewStats,
+  type FlavorTagSlug,
 } from '@crema/shared';
 import { AppError } from '../lib/app-error.js';
 import type {
@@ -14,6 +15,8 @@ import type {
   BrewProposalResult,
   CoachAnswerEvent,
   CoachTools,
+  ExtractedFlavorTag,
+  FlavorTagExtraction,
 } from './ai-provider.js';
 
 /**
@@ -207,7 +210,61 @@ export class FakeAiProvider implements AiProvider {
       toolCalls,
     };
   }
+
+  /**
+   * Flavour tagging by word list rather than by model — a tag's own name
+   * scores higher than a synonym, because "chocolate" *states* chocolate while
+   * "cocoa" suggests it, and the confidence column exists to carry exactly
+   * that difference.
+   */
+  extractFlavorTags(
+    tastingNotes: string,
+    options: AiCallOptions = {},
+  ): Promise<FlavorTagExtraction> {
+    if (options.signal?.aborted) return Promise.reject(options.signal.reason as Error);
+
+    const haystack = tastingNotes.toLowerCase();
+    const tags: ExtractedFlavorTag[] = [];
+
+    for (const [slug, synonyms] of Object.entries(FLAVOR_WORDS) as [FlavorTagSlug, string[]][]) {
+      if (new RegExp(`\\b${slug}\\b`).test(haystack)) {
+        tags.push({ slug, confidence: 0.9 });
+      } else if (synonyms.some((word) => new RegExp(`\\b${word}\\b`).test(haystack))) {
+        tags.push({ slug, confidence: 0.7 });
+      }
+    }
+
+    return Promise.resolve({
+      tags,
+      usage: {
+        inputTokens: Math.ceil(tastingNotes.length / 4),
+        outputTokens: Math.ceil(JSON.stringify(tags).length / 4),
+      },
+    });
+  }
 }
+
+/**
+ * What each tag sounds like in a tasting note, beyond its own name. Small on
+ * purpose — the fake reads the phrasings the feature is documented with, and
+ * growing this list toward completeness would be writing a model badly.
+ */
+const FLAVOR_WORDS: Record<FlavorTagSlug, string[]> = {
+  fruity: ['fruit', 'peach', 'apricot', 'apple', 'grape', 'mango', 'tropical'],
+  floral: ['jasmine', 'rose', 'blossom', 'lavender', 'hibiscus'],
+  citrus: ['lemon', 'orange', 'lime', 'grapefruit', 'bergamot'],
+  berry: ['blackcurrant', 'currant', 'blueberry', 'strawberry', 'raspberry'],
+  chocolate: ['cocoa', 'cacao', 'chocolatey'],
+  caramel: ['toffee', 'butterscotch', 'brown sugar'],
+  nutty: ['nut', 'almond', 'hazelnut', 'walnut', 'peanut'],
+  spice: ['spicy', 'cinnamon', 'clove', 'cardamom', 'pepper'],
+  roasted: ['roast', 'toasty', 'smoky', 'char'],
+  earthy: ['earth', 'muddy', 'mushroom', 'woody', 'forest'],
+  sweet: ['sweetness', 'honey', 'sugar'],
+  acidic: ['acidity', 'bright', 'tart', 'sour'],
+  bitter: ['bitterness', 'harsh', 'astringent', 'ashy'],
+  smooth: ['silky', 'velvety', 'creamy', 'clean'],
+};
 
 /**
  * A candidate from the numbers the log already holds: the best-rated method at

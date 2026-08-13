@@ -577,5 +577,80 @@ export function describeBrewRepositoryContract(
         expect(reread?.beans).toBe('Original');
       });
     });
+
+    describe('flavour tags', () => {
+      it('answers null for a brew that does not exist, from both methods', async () => {
+        const id = randomUUID();
+
+        expect(await repository.flavorTagsFor(id)).toBeNull();
+        expect(await repository.replaceAiFlavorTags(id, [])).toBeNull();
+      });
+
+      it('answers an empty list for a brew nothing has tagged', async () => {
+        const brew = await repository.create(aBrew());
+
+        expect(await repository.flavorTagsFor(brew.id)).toEqual([]);
+      });
+
+      it('stores AI tags with their provenance and confidence, in vocabulary order', async () => {
+        const brew = await repository.create(aBrew());
+
+        const tags = await repository.replaceAiFlavorTags(brew.id, [
+          { slug: 'floral', confidence: 0.9 },
+          { slug: 'berry', confidence: 0.7 },
+        ]);
+
+        // Berry before floral would be input order; the vocabulary says
+        // floral first. Every tag list reads in one order, whoever wrote it.
+        expect(tags?.map((tag) => tag.slug)).toEqual(['floral', 'berry']);
+        expect(tags?.every((tag) => tag.source === 'ai')).toBe(true);
+        expect(tags?.find((tag) => tag.slug === 'berry')?.confidence).toBe(0.7);
+        expect(tags?.find((tag) => tag.slug === 'berry')?.label).toBe('Berry');
+      });
+
+      it('replaces rather than accumulates, because tags describe the notes as they are', async () => {
+        const brew = await repository.create(aBrew());
+
+        await repository.replaceAiFlavorTags(brew.id, [{ slug: 'chocolate', confidence: 0.8 }]);
+        const after = await repository.replaceAiFlavorTags(brew.id, [
+          { slug: 'citrus', confidence: 0.6 },
+        ]);
+
+        expect(after?.map((tag) => tag.slug)).toEqual(['citrus']);
+      });
+
+      it('keeps two decimals of confidence, as the column does', async () => {
+        const brew = await repository.create(aBrew());
+
+        const tags = await repository.replaceAiFlavorTags(brew.id, [
+          { slug: 'sweet', confidence: 0.876 },
+        ]);
+
+        expect(tags?.[0]?.confidence).toBe(0.88);
+      });
+
+      it('stops answering for a soft-deleted brew, like every other read', async () => {
+        const brew = await repository.create(aBrew());
+        await repository.replaceAiFlavorTags(brew.id, [{ slug: 'nutty', confidence: 0.9 }]);
+
+        await repository.softDelete(brew.id);
+
+        expect(await repository.flavorTagsFor(brew.id)).toBeNull();
+        expect(
+          await repository.replaceAiFlavorTags(brew.id, [{ slug: 'sweet', confidence: 0.5 }]),
+        ).toBeNull();
+      });
+
+      it('hands out copies, so a response cannot mutate the store', async () => {
+        const brew = await repository.create(aBrew());
+        await repository.replaceAiFlavorTags(brew.id, [{ slug: 'earthy', confidence: 0.8 }]);
+
+        const tags = await repository.flavorTagsFor(brew.id);
+        if (tags?.[0]) tags[0].label = 'Tampered with';
+
+        const reread = await repository.flavorTagsFor(brew.id);
+        expect(reread?.[0]?.label).toBe('Earthy');
+      });
+    });
   });
 }

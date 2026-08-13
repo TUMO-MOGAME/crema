@@ -59,5 +59,7 @@ export type {
   CoachBrew,
   CoachToolResult,
   CoachTools,
+  ExtractedFlavorTag,
+  FlavorTagExtraction,
   ListBrewsToolArgs,
 } from './ai-provider.js';

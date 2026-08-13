@@ -1,9 +1,11 @@
 import {
+  brewFlavorTagListSchema,
   brewMethodSchema,
   brewPageSchema,
   brewSchema,
   BREW_PAGE,
   type Brew,
+  type BrewFlavorTag,
   type BrewMethod,
   type BrewMethodSlug,
   type BrewPage,
@@ -68,6 +70,11 @@ export const brewsApi = {
   remove: (id: string) => apiRequest<void>(`/api/brews/${id}`, { method: 'DELETE' }),
 
   methods: () => apiRequest<BrewMethod[]>('/api/brew-methods', { schema: brewMethodListSchema }),
+
+  flavorTags: (id: string) =>
+    apiRequest<BrewFlavorTag[]>(`/api/brews/${id}/flavor-tags`, {
+      schema: brewFlavorTagListSchema,
+    }),
 };
 
 /** How many brews one request asks for. */
@@ -84,4 +91,5 @@ export const brewKeys = {
   lists: () => [...brewKeys.all, 'list'] as const,
   list: (method?: BrewMethodSlug) => [...brewKeys.lists(), method ?? 'all'] as const,
   methods: () => ['brew-methods'] as const,
+  flavorTags: (id: string) => [...brewKeys.all, id, 'flavor-tags'] as const,
 };

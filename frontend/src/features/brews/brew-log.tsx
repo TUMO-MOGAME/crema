@@ -1,4 +1,5 @@
 import type { Brew, BrewMethodSlug, BrewProposal, CreateBrewInput } from '@crema/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { OfflineBanner } from '../../components/offline-banner';
@@ -6,9 +7,11 @@ import { ThemeToggle } from '../../components/theme-toggle';
 import { useToast } from '../../components/toast-context';
 import { brewCountTitle, useDocumentTitle } from '../../hooks/use-document-title';
 import { ApiError } from '../../lib/api-client';
+import { aiApi } from '../coach/ai-api';
 import { CoachDialog } from '../coach/coach-dialog';
 import { useAiEnabled } from '../coach/use-ai';
 import { BrewFormDialog } from './brew-form-dialog';
+import { brewKeys } from './brews-api';
 import { BrewRow } from './brew-row';
 import { DeleteConfirmDialog } from './delete-confirm-dialog';
 import { MethodFilter } from './method-filter';
@@ -48,6 +51,7 @@ export function BrewLog() {
   const brews = useBrews(method || undefined);
   const methods = useBrewMethods();
   const toast = useToast();
+  const client = useQueryClient();
   const create = useCreateBrew();
   const update = useUpdateBrew();
   const remove = useDeleteBrew();
@@ -109,14 +113,32 @@ export function BrewLog() {
     const editingNow = editing !== null;
 
     try {
-      if (editing) await update.mutateAsync({ brew: editing, changes: values });
-      else await create.mutateAsync(values);
+      const saved = editing
+        ? await update.mutateAsync({ brew: editing, changes: values })
+        : await create.mutateAsync(values);
 
       closeForm();
       toast.show(editingNow ? 'Brew updated.' : 'Brew added.');
+      tagFlavours(saved.id);
     } catch {
       // Left open, with the reason attached to the field that caused it.
     }
+  };
+
+  /**
+   * The one AI call nobody waits on. Fired after a save succeeds, in its own
+   * request, so a slow model can never make saving feel slow — and dropped
+   * silently on failure, because the tags are an index over the notes and the
+   * notes themselves are already safe. PLANNING 6.3 is the position: notes
+   * normalise into the vocabulary on save, carrying `source: 'ai'`.
+   */
+  const tagFlavours = (brewId: string) => {
+    if (!aiEnabled) return;
+
+    void aiApi
+      .extractFlavorTags(brewId)
+      .then(() => client.invalidateQueries({ queryKey: brewKeys.flavorTags(brewId) }))
+      .catch(() => undefined);
   };
 
   /**

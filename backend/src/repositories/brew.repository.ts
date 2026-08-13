@@ -1,9 +1,11 @@
 import type {
   Brew,
+  BrewFlavorTag,
   BrewMethodSlug,
   BrewPage,
   BrewStats,
   CreateBrewInput,
+  FlavorTagSlug,
   UpdateBrewInput,
 } from '@crema/shared';
 
@@ -70,6 +72,38 @@ export interface BrewRepository {
    * cabinet. Deleted brews are excluded, as everywhere else.
    */
   stats(): Promise<BrewStats>;
+
+  /**
+   * Replace the AI-derived flavour tags on a live brew.
+   *
+   * Replace, not append: tags describe the tasting notes as they are now, and
+   * a re-extraction after the notes change must not leave descriptions of the
+   * old text behind. Human-applied tags are never touched — provenance is the
+   * column the schema leans on, and an operation that could erase a person's
+   * choice because a model ran again would collapse it.
+   *
+   * A tag the person already chose is skipped rather than duplicated or
+   * downgraded: the row's primary key is (brew, tag), and the human's version
+   * of a tag outranks the model's opinion of the same one.
+   *
+   * `null` when there is no live brew, per the missing-means-null rule.
+   * Returns the brew's full tag list, in vocabulary order.
+   */
+  replaceAiFlavorTags(brewId: string, tags: AiFlavorTagInput[]): Promise<BrewFlavorTag[] | null>;
+
+  /** All tags on a live brew, vocabulary order. `null` when no live brew. */
+  flavorTagsFor(brewId: string): Promise<BrewFlavorTag[] | null>;
+}
+
+/** An AI-derived tag to attach: what it is and how sure the model was. */
+export interface AiFlavorTagInput {
+  slug: FlavorTagSlug;
+  confidence: number;
+}
+
+/** `confidence numeric(3,2)` keeps two decimals; the adapters must agree. */
+export function toStoredConfidence(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 /**

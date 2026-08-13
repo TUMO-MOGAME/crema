@@ -1,4 +1,11 @@
-import { brewProposalSchema, type BrewProposal, type QuickLogRequest } from '@crema/shared';
+import {
+  brewFlavorTagListSchema,
+  brewProposalSchema,
+  type BrewFlavorTag,
+  type BrewProposal,
+  type ExtractFlavorTagsRequest,
+  type QuickLogRequest,
+} from '@crema/shared';
 import { z } from 'zod';
 import { apiRequest } from '../../lib/api-client';
 
@@ -35,6 +42,13 @@ export const aiApi = {
       method: 'POST',
       body: JSON.stringify({ text } satisfies QuickLogRequest),
       schema: brewProposalSchema,
+    }),
+
+  extractFlavorTags: (brewId: string) =>
+    apiRequest<BrewFlavorTag[]>('/api/ai/flavor-tags', {
+      method: 'POST',
+      body: JSON.stringify({ brewId } satisfies ExtractFlavorTagsRequest),
+      schema: brewFlavorTagListSchema,
     }),
 };
 

@@ -4,18 +4,34 @@ import {
   BREW_PAGE,
   EMPTY_BREW_STATS,
   isBrewMethodSlug,
+  isFlavorTagSlug,
   type Brew,
+  type BrewFlavorTag,
   type BrewMethodSlug,
   type BrewMethodStats,
   type BrewPage,
   type BrewStats,
   type CreateBrewInput,
+  type FlavorTagSlug,
   type UpdateBrewInput,
 } from '@crema/shared';
 import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import { brewMethods, brews, type BrewRow, type NewBrewRow } from '../db/schema.js';
-import { toIsoInstant, type BrewFilter, type BrewRepository } from './brew.repository.js';
+import {
+  brewFlavorTags,
+  brewMethods,
+  brews,
+  flavorTags,
+  type BrewRow,
+  type NewBrewRow,
+} from '../db/schema.js';
+import {
+  toIsoInstant,
+  toStoredConfidence,
+  type AiFlavorTagInput,
+  type BrewFilter,
+  type BrewRepository,
+} from './brew.repository.js';
 
 /**
  * The Postgres adapter. Written, tested, and not switched on.
@@ -163,6 +179,106 @@ export class DrizzleBrewRepository implements BrewRepository {
       .returning();
 
     return row ? toBrew(row, methods) : null;
+  }
+
+  async replaceAiFlavorTags(
+    brewId: string,
+    tags: AiFlavorTagInput[],
+  ): Promise<BrewFlavorTag[] | null> {
+    if (!(await this.isLive(brewId))) return null;
+
+    const tagIds = await this.tagIds();
+
+    // Two statements, one transaction: a reader must never see the moment
+    // between the old tags leaving and the new ones landing.
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(brewFlavorTags)
+        .where(and(eq(brewFlavorTags.brewId, brewId), eq(brewFlavorTags.source, 'ai')));
+
+      const values = tags.map((tag) => {
+        const tagId = tagIds.get(tag.slug);
+        // Unreachable while the vocabulary sync test holds — the parameter is
+        // typed to the same list the migration seeds.
+        if (tagId === undefined) throw new Error(`Unknown flavour tag: ${tag.slug}`);
+
+        return {
+          brewId,
+          tagId,
+          source: 'ai' as const,
+          confidence: toStoredConfidence(tag.confidence),
+        };
+      });
+
+      // `onConflictDoNothing` is the human-tags-win rule, enforced by the
+      // primary key rather than by a read first: if a person already chose
+      // this tag, the (brew, tag) row exists and the model's version is
+      // dropped — the same decision the in-memory adapter makes explicitly.
+      if (values.length > 0) {
+        await tx.insert(brewFlavorTags).values(values).onConflictDoNothing();
+      }
+    });
+
+    return this.flavorTagsFor(brewId);
+  }
+
+  async flavorTagsFor(brewId: string): Promise<BrewFlavorTag[] | null> {
+    if (!(await this.isLive(brewId))) return null;
+
+    const rows = await this.db
+      .select({
+        slug: flavorTags.slug,
+        label: flavorTags.label,
+        source: brewFlavorTags.source,
+        confidence: brewFlavorTags.confidence,
+      })
+      .from(brewFlavorTags)
+      .innerJoin(flavorTags, eq(brewFlavorTags.tagId, flavorTags.id))
+      .where(eq(brewFlavorTags.brewId, brewId))
+      // Tag ids are assigned in seed order, so id order is vocabulary order —
+      // the same order the in-memory adapter sorts into.
+      .orderBy(asc(brewFlavorTags.tagId));
+
+    return rows.map((row) => {
+      // citext comes back as `string`; the vocabulary is the type's authority.
+      if (!isFlavorTagSlug(row.slug)) {
+        throw new Error(`The database returned a flavour tag outside the vocabulary: ${row.slug}`);
+      }
+
+      return { slug: row.slug, label: row.label, source: row.source, confidence: row.confidence };
+    });
+  }
+
+  /** Whether a live brew has this id — the guard both tag methods share. */
+  private async isLive(brewId: string): Promise<boolean> {
+    const found = await this.db
+      .select({ id: brews.id })
+      .from(brews)
+      .where(and(eq(brews.id, brewId), isNull(brews.deletedAt)))
+      .limit(1);
+
+    return found.length > 0;
+  }
+
+  /** slug → id for the tag vocabulary, loaded once — the same shape as methods. */
+  private tagLookup: Promise<Map<FlavorTagSlug, number>> | null = null;
+
+  private tagIds(): Promise<Map<FlavorTagSlug, number>> {
+    this.tagLookup ??= this.db
+      .select({ id: flavorTags.id, slug: flavorTags.slug })
+      .from(flavorTags)
+      .then(
+        (rows) =>
+          new Map(
+            rows
+              .filter((row): row is { id: number; slug: FlavorTagSlug } =>
+                isFlavorTagSlug(row.slug),
+              )
+              .map((row) => [row.slug, row.id]),
+          ),
+      );
+
+    return this.tagLookup;
   }
 
   async softDelete(id: string): Promise<boolean> {
