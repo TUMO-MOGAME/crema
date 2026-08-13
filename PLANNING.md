@@ -2,7 +2,7 @@
 
 **Project:** Crema — a brew log for people who take coffee seriously **Author:**
 Tumo Mogame **Assessment:** XPL Full-stack Developer Bootcamp **Last updated:**
-2026-08-05
+2026-08-13
 
 This document is the plan of record. It explains what is being built, why each
 technical decision was made, and in what order the work happens. Live progress
@@ -94,7 +94,7 @@ in an interview.
 | Model        | Gemini Flash (free tier), pinned via `GEMINI_MODEL` env var | Fast and free-tier eligible. The exact model id lives in env, never hardcoded, so it can be bumped without a code change.                                                                                                                                             |
 | Testing      | Vitest, React Testing Library, MSW, Playwright              | Unit, integration, and one real end-to-end journey.                                                                                                                                                                                                                   |
 | CI/CD        | GitHub Actions                                              | Section 7.                                                                                                                                                                                                                                                            |
-| Hosting      | Vercel (two projects, one repo)                             | Section 8.                                                                                                                                                                                                                                                            |
+| Hosting      | Vercel, one project in services mode                        | Section 8. Planned as two projects; built as one so the app answers on a single origin.                                                                                                                                                                               |
 
 ---
 
@@ -120,7 +120,7 @@ in an interview.
 │   │   ├── app.ts               Route composition (no listener — testable)
 │   │   ├── server.ts            Node entrypoint for local dev
 │   │   ├── config/env.ts        Zod-validated environment, fails fast
-│   │   ├── routes/              brews.ts, coach.ts, health.ts
+│   │   ├── routes/              brews.ts, ai.ts, health.ts
 │   │   ├── services/            Business logic, framework-agnostic
 │   │   ├── repositories/        BrewRepository interface + adapters
 │   │   ├── db/                  Drizzle schema, client factory
@@ -172,19 +172,27 @@ commit. There is no drift, and no hand-written duplicate types.
 
 ### 4.4 API surface
 
-| Method   | Path                    | Success            | Errors                           |
-| -------- | ----------------------- | ------------------ | -------------------------------- |
-| `GET`    | `/api/brews`            | `200`              | `400` bad filter                 |
-| `GET`    | `/api/brews?method=v60` | `200`              | `400` unknown method             |
-| `GET`    | `/api/brews/:id`        | `200`              | `404`                            |
-| `POST`   | `/api/brews`            | `201` + `Location` | `400` validation, `422` semantic |
-| `PATCH`  | `/api/brews/:id`        | `200`              | `400`, `404`, `422` semantic     |
-| `DELETE` | `/api/brews/:id`        | `204`              | `404`                            |
-| `GET`    | `/api/brew-methods`     | `200`              | —                                |
-| `GET`    | `/api/stats`            | `200`              | — (empty log is zeroes, not 404) |
-| `POST`   | `/api/coach/chat`       | `200` streamed     | `429`, `503` when AI disabled    |
-| `POST`   | `/api/coach/parse`      | `200`              | `422` unparseable, `503`         |
-| `GET`    | `/api/health`           | `200`              | —                                |
+| Method   | Path                    | Success            | Errors                                       |
+| -------- | ----------------------- | ------------------ | -------------------------------------------- |
+| `GET`    | `/api/brews`            | `200`              | `400` bad filter                             |
+| `GET`    | `/api/brews?method=v60` | `200`              | `400` unknown method                         |
+| `GET`    | `/api/brews/:id`        | `200`              | `404`                                        |
+| `POST`   | `/api/brews`            | `201` + `Location` | `400` validation, `422` semantic             |
+| `PATCH`  | `/api/brews/:id`        | `200`              | `400`, `404`, `422` semantic                 |
+| `DELETE` | `/api/brews/:id`        | `204`              | `404`                                        |
+| `GET`    | `/api/brew-methods`     | `200`              | —                                            |
+| `GET`    | `/api/stats`            | `200`              | — (empty log is zeroes, not 404)             |
+| `POST`   | `/api/ai/quick-log`     | `200`              | `400`, `413`, `422` unreadable, `429`, `503` |
+| `POST`   | `/api/ai/coach`         | `200` streamed     | `429`, `503` when AI disabled                |
+| `GET`    | `/api/health`           | `200`              | —                                            |
+
+The AI routes were planned as `/api/coach/*` and built under `/api/ai/*`. The
+namespace changed so the tighter rate budget — a request here costs a model
+call, not a map lookup — mounts on one prefix instead of a list of paths that
+somebody would eventually forget to extend. Quick Log answers `200` rather than
+`201` because nothing is created: what comes back is a proposal the user
+confirms in the normal Add form, and `POST /api/brews` remains the only route
+that writes a brew.
 
 Errors use a single envelope so the frontend has exactly one shape to handle:
 
@@ -441,26 +449,35 @@ and fails unless every stage reports `success`.
 
 ## 8. Deployment
 
-Two Vercel projects from this one repository:
+One Vercel project running both workspaces as services, configured by the
+`vercel.json` at the repository root.
 
-| Project     | Root directory | Output                                       |
-| ----------- | -------------- | -------------------------------------------- |
-| `crema-web` | `frontend`     | Static SPA on the CDN                        |
-| `crema-api` | `backend`      | Vercel Functions from `backend/api/index.ts` |
+The plan called for two projects — `crema-web` for the SPA, `crema-api` for the
+API — and was revised while shipping Phase 7. Vercel's Services preset detects
+both workspaces from this one repository and routes between them, so the SPA is
+served at `/` and `/api` is rewritten to the backend service, and the whole app
+answers on a single origin. Taking that removed three problems rather than
+solving them: no cross-origin request to permit, no second domain to keep in
+step with a hardcoded CSP, and one URL to record instead of two that must agree.
 
-Both have "Include files outside the Root Directory" enabled so they can resolve
-the `shared/` workspace package.
+| Service    | Root       | Framework | Serves                                            |
+| ---------- | ---------- | --------- | ------------------------------------------------- |
+| `frontend` | `frontend` | Vite      | The SPA, at `/`                                   |
+| `backend`  | `backend`  | Hono      | The API, at `/api`, from the app `app.ts` exports |
 
-Environment variables, set in the Vercel dashboard only — never in the repo:
+The backend entrypoint is `src/app.ts`, not `src/server.ts`: Vercel's Hono
+runtime imports a default-exported app and serves `app.fetch` itself, so the
+entry must be the file that exports the app. `server.ts` — the file that binds a
+port — is the entrypoint only where a real process listens, which is local
+development and the end-to-end suite. Both are one import from the same
+`createApp()`, so what the suite drives and what production serves cannot drift.
 
-| Variable            | Project | Notes                                 |
-| ------------------- | ------- | ------------------------------------- |
-| `VITE_API_BASE_URL` | web     | Public by design                      |
-| `GEMINI_API_KEY`    | api     | Secret. Backend only.                 |
-| `GEMINI_MODEL`      | api     | e.g. a Gemini Flash id                |
-| `DATA_SOURCE`       | api     | `memory` for v1                       |
-| `DATABASE_URL`      | api     | Added only when Supabase is connected |
-| `CORS_ORIGIN`       | api     | The web project's domain              |
+Environment variables are set in the Vercel dashboard only — never in the repo —
+and the live table, with the reasoning for each value, is kept in
+[deployment.md](./deployment.md) alongside the deploy log. `CORS_ORIGIN` and
+`VITE_API_BASE_URL`, both planned above, are deliberately absent: one origin
+serves everything, so there is no cross-origin request to permit and the client
+defaults to a relative base in a built bundle.
 
 `.env.example` documents every variable with a comment and a safe placeholder.
 `.gitignore` excludes `.env`, `.env.*`, `!.env.example`, and local tooling
@@ -527,17 +544,20 @@ these phases is what STATUS.md tracks.
 | **4 — UI**         | Design system, list, filter, add/edit dialog, delete, empty and error states      | Wireframes matched, responsive, brief's UI rules met |
 | **5 — Polish**     | Optimistic updates, toasts, skeletons, focus management, motion, a11y pass        | Lighthouse ≥ 95 accessibility                        |
 | **6 — AI**         | Provider abstraction, Quick Log, Coach agent, tools, trace UI, guardrails         | Works with a key; degrades cleanly without one       |
-| **7 — Ship**       | Vercel projects, custom domain, `deployment.md`, README, demo data, screenshots   | Live URL, green pipeline, all of section 9 checked   |
+| **7 — Ship**       | Vercel services deploy, `deployment.md`, README, demo data, screenshots           | Live URL, green pipeline, all of section 9 checked   |
 
 Phases 3 and 4 can overlap once the API contract in `shared/` is frozen.
 
-As built, phases 0 through 4 are done. The one deliberate departure from a spec
-in this document is the rating badge in phase 4: the wireframe draws a traffic
-light, and the badge keeps its shape, size and position but runs the scale
-through the drink instead — pale ash at 1, full crema at 5, with an arc filled
-to `rating / 5`. Red against green is the one pairing a colour-blind reader
-cannot separate, and here the colour is doing the scanning work down a list. The
-value is now carried three ways, so no reader depends on any one of them.
+As built, phases 0 through 5 are done, phase 6 is under way with Quick Log
+served by the API, and phase 7's deploy is live from a single Vercel project
+rather than the two planned — the revision section 8 records. The one deliberate
+departure from a wireframe is the rating badge in phase 4: the wireframe draws a
+traffic light, and the badge keeps its shape, size and position but runs the
+scale through the drink instead — pale ash at 1, full crema at 5, with an arc
+filled to `rating / 5`. Red against green is the one pairing a colour-blind
+reader cannot separate, and here the colour is doing the scanning work down a
+list. The value is now carried three ways, so no reader depends on any one of
+them.
 
 ---
 
@@ -562,14 +582,24 @@ Settled 2026-08-05. Phase 0 is unblocked.
    satisfies the brief in full. A custom domain can be attached later without
    changing a line of code or configuration.
 
+Settled 2026-08-10, while shipping Phase 7:
+
+5. **Deployment — one Vercel project in services mode, not two.** The two
+   projects planned in section 8 meant a CORS origin to permit, a second domain
+   for the CSP to name, and two URLs that had to agree. The Services preset runs
+   both workspaces behind one origin from the root `vercel.json`, which removes
+   all three. The first failed deploy in the deployment.md log is what this
+   decision cost to learn: services mode only exists when the project's Root
+   Directory is the repository root.
+
 ---
 
 ## 12. Risks
 
-| Risk                                            | Mitigation                                                                                        |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Gemini free-tier rate limits during a live demo | Response caching, `429` handled with a friendly message, seeded demo transcript available offline |
-| Reviewer has no Gemini key                      | Graceful degradation is an acceptance criterion, not a nice-to-have                               |
-| Scope creep from the AI work                    | AI is Phase 6. Everything the brief requires is complete and shippable at the end of Phase 5      |
-| Vercel monorepo build resolution                | "Include files outside Root Directory" verified in Phase 1, before any real code depends on it    |
-| Over-engineering                                | Section 1.3 states what is deliberately not built, and the README repeats it                      |
+| Risk                                            | Mitigation                                                                                                                                   |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gemini free-tier rate limits during a live demo | Response caching, `429` handled with a friendly message, seeded demo transcript available offline                                            |
+| Reviewer has no Gemini key                      | Graceful degradation is an acceptance criterion, not a nice-to-have                                                                          |
+| Scope creep from the AI work                    | AI is Phase 6. Everything the brief requires is complete and shippable at the end of Phase 5                                                 |
+| Vercel monorepo build resolution                | Root Directory must be the repository root or services mode never engages; recorded in deployment.md after the first failed deploy proved it |
+| Over-engineering                                | Section 1.3 states what is deliberately not built, and the README repeats it                                                                 |

@@ -1,7 +1,7 @@
 # Status
 
 **Project:** Crema — Coffee Brew Log **Branch:** `main` **Last updated:**
-2026-08-09
+2026-08-13
 
 Live progress board. Open this file first — it answers "what is done, how far
 along is this, what is next, and what is blocked" without reading any code. The
@@ -23,17 +23,27 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
 | 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 45%      |
-| 7     | Ship — Vercel, docs, demo                     | not started | 0%       |
+| 7     | Ship — Vercel, docs, demo                     | in progress | 40%      |
 
-**Overall: 7 of 8 phases complete, and the eighth has started.** 486 unit tests,
-99 database tests, 10 provider tests and 16 end-to-end journeys passing, `main`
-protected and green. Supabase is connected, so the brief is now satisfied in
-full and what remains is the work that goes beyond it: the AI surfaces, and
-deployment.
+**Overall: planning and phases 0 through 5 are complete, and both remaining
+phases are under way.** 486 unit tests, 99 database tests, 10 provider tests and
+16 end-to-end journeys passing, `main` protected and green. Supabase is
+connected and the app is deployed: the third production deploy built green after
+the two failures the deployment log records. What remains is making the URL
+public, the rest of the AI surfaces, and the final documentation pass.
 
 ---
 
 ## Now
+
+**The app is deployed.** The five deployment fixes are merged to `main` on both
+remotes, and the production deploy of that commit built green — the third
+attempt, after the Root Directory and entrypoint failures the deployment log
+walks through. One Vercel project runs both workspaces as services behind a
+single origin, exactly as [deployment.md](./deployment.md) describes. The URL is
+not yet public: Vercel's deployment protection is on by default and every
+deployment URL answers with a login redirect until the dashboard toggle turns it
+off. The live URLs land in deployment.md the moment it does.
 
 Phases 0, 1 and 2 are complete and verified. The monorepo runs, builds, tests
 and lints clean on a fresh install; every change to the portfolio repository has
@@ -158,11 +168,13 @@ React 19.2, Hono 4.13, Zod 4.4, Playwright 1.62.
 
 ## Blocked on
 
-**Nothing.** The GitHub Actions outage that held Phase 4 open is resolved and
-the pipeline is scheduling jobs again. Both pull requests are merged, both
-remotes are at the same commit, and every stage has now run green in CI rather
-than only on one machine — including `Lint and format`, which the outage had
-prevented from executing even once.
+**One dashboard toggle.** The production deploy is green, but every URL Vercel
+exposes for it redirects to a Vercel login: Deployment Protection ships enabled
+("Standard Protection") and the free plan offers no per-environment carve-out.
+Turning **Require Log In** off under Settings → Deployment Protection makes the
+production domain public. It is a dashboard action on the project owner's
+account, so it cannot be scripted from the repository — everything else about
+the deploy is code and is done.
 
 One flake is worth naming so the next person to hit it does not go looking for a
 bug in their own change. On Windows, `npm run verify` intermittently reports the
@@ -190,10 +202,12 @@ does not mask anything.
 
 ## Next
 
-Phase 6 — the AI surfaces. Quick Log, which turns a sentence into a pre-filled
-form, and the Brew Coach, which answers questions from the log with its
-reasoning shown. Both degrade to a clean 503 without a key, which the health
-endpoint already reports and the API already returns.
+Phase 6 — the AI surfaces, starting with the Quick Log frontend: the sentence
+box in the Add form, the pre-fill from `POST /api/ai/quick-log`, and the
+highlight on what the model inferred rather than was told. Then the Brew Coach,
+which answers questions from the log with its reasoning shown. Both degrade to a
+clean 503 without a key, which the health endpoint already reports and the API
+already returns.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -460,13 +474,19 @@ control that opened it.
 
 ### Phase 7 — Ship
 
-- [ ] `crema-web` Vercel project
-- [ ] `crema-api` Vercel project
-- [ ] Environment variables set in Vercel only
-- [ ] Preview deployments on pull requests
+The two projects this checklist originally named (`crema-web`, `crema-api`)
+became one Vercel project in services mode — PLANNING section 8 records the
+revision and what it removed.
+
+- [x] Vercel project running both workspaces as services from the root
+      `vercel.json`
+- [x] Environment variables set in Vercel only
+- [x] Preview deployments on pull requests
+- [x] Production deploy green
+- [ ] Production URL public — blocked on the Deployment Protection toggle
+- [ ] `deployment.md` with live URLs
 - [ ] `README.md`
 - [ ] `Documentation.md`
-- [ ] `deployment.md` with live URLs
 - [ ] Screenshots and a demo recording
 - [ ] Every acceptance criterion in PLANNING section 9 checked
 
@@ -538,3 +558,4 @@ control that opened it.
 | 2026-08-09 | Supabase connected and the brief's ORM requirement closed. Nine migrations applied to a real project and `DATA_SOURCE` set to postgres with no application code touched — the repository pattern's central claim, tested rather than asserted. The app now serves the log from Supabase over real HTTP: create, read, update, soft delete and the aggregate views. Two things surfaced. The pooler host had to be found by probing regions, because Supavisor answers a wrong region, a wrong `aws-N` prefix and a wrong project ref with the same "tenant not found". And a database test that never arranged its own brew depended on a row seed.sql leaves behind, so against a migrated but unseeded database it deleted the `v60` method it was asserting could not be deleted, failing 52 tests downstream with nothing naming the cause. Fixed to arrange and clean up after itself, and verified against a migrated, unseeded database where the suite now passes with all eight methods intact.                                                                                                                                                                                                                                                                                                                                                                                 |
 | 2026-08-09 | Gemini wired in behind the seam, and the contract suite earned its keep on the first run. `GeminiAiProvider` passes all ten tests the fake passes — tests written before the adapter existed and not adjusted to accommodate what the model turned out to do. Two things came out of running it for real. The prompt originally told the model that the dose is the smaller amount and the water the larger, which is a reasonable heuristic and wrong: given "900g through the V60, 12 water" the model dutifully swapped them, rewriting what the person said. It now reports the two as the sentence assigns them however odd the result looks. And the timeout was set from measurement rather than taste — typical calls return in 1.8 to 5 seconds, but the same sentence came back in 2.0s on one attempt and 15.9s on the next, so a 15 second ceiling was failing calls that were about to succeed. It is 30 seconds, which bounds the pathological case without cutting into the normal range. Thinking is set to `low`: on this task the default budget spends 273 reasoning tokens to reach the identical object, nine times the output for the same answer. `createAiProvider` now exists, because there is finally a provider to return honestly. 468 unit tests, plus 10 against the real model.                                                                          |
 | 2026-08-09 | `POST /api/ai/quick-log` serves the first AI surface. A 200 rather than a 201, because nothing is created — what comes back is a candidate the user confirms in the normal Add form, and `POST /api/brews` is still the only route that writes a brew. Guardrails are the point of the endpoint as much as the extraction: a 500-character cap in the shared schema, the 16 KB body limit underneath it, a 10-per-minute budget mounted on `/api/ai/*` because a request here costs a model call rather than a map lookup, the client's disconnect handed to the provider so a user who navigates away stops paying for tokens, and a 503 with `AI_UNAVAILABLE` on a deployment with no key. Sixteen route tests cover every one of those against the fake, with no key and no bill. Two things were corrected on the way. `/api/health` was reporting `ai.enabled` from the environment while the routes used the injected provider, so an app built without one on a machine that had a key would have advertised a surface that answered 503 — it now reads the service the requests go to. And the default wiring used `dependencies.ai ?? createAiProvider()`, which would have handed a test asserting the 503 path a real provider on any machine with a key configured, passing for the wrong reason. Verified end to end against real Gemini and real Supabase. 486 unit tests. |
+| 2026-08-13 | Deployed. Five commits fixed what two failed deploys surfaced — the build importing the test runner, the frontend's headers living in a file services mode never reads, and the service entrypoint naming the file that listens rather than the file that exports the app — and the third production deploy built green. All five are merged to `main` on both remotes, the fix branch is deleted everywhere, and the plan's deployment section now describes the single-origin services setup that actually shipped rather than the two projects it proposed. One thing holds the URL back: Vercel's default deployment protection answers every request with a login redirect until it is switched off in the dashboard, which is recorded under Blocked on.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
