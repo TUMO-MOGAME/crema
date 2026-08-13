@@ -23,25 +23,26 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
 | 6     | AI — Quick Log, Coach agent, guardrails       | **done**    | 100%     |
-| 7     | Ship — Vercel, docs, demo                     | in progress | 70%      |
+| 7     | Ship — Vercel, docs, demo                     | in progress | 85%      |
 
 **Overall: planning and phases 0 through 6 are complete; what remains is Phase
 7's closing sweep.** 559 unit tests, 106 database tests, 20 provider tests and
 16 end-to-end journeys passing, `main` protected and green. **The app is live**
 — serving from Supabase behind a single public origin with all three AI surfaces
 enabled, verified end to end, and the URL recorded in
-[deployment.md](./deployment.md). What remains is documentation: the README
-pass, screenshots, the demo, and ticking the acceptance criteria.
+[deployment.md](./deployment.md). All thirty acceptance criteria are ticked
+against evidence; what remains is the README pass, Documentation.md, screenshots
+and the demo.
 
 ---
 
 ## Now
 
 **The app is live.** One Vercel project runs both workspaces as services behind
-a single public origin, the log serves from Supabase, and both AI surfaces are
-enabled — verified end to end, including a sentence read through real Gemini in
-production. The URLs are in [deployment.md](./deployment.md), together with the
-full deploy log: two build failures, a protection wall, and an environment
+a single public origin, the log serves from Supabase, and all three AI surfaces
+are enabled — verified end to end, including a sentence read through real Gemini
+in production. The URLs are in [deployment.md](./deployment.md), together with
+the full deploy log: two build failures, a protection wall, and an environment
 variable three days older than the plan revision it contradicted, each recorded
 with what fixed it. The last of those is worth the read — the env loader's
 refusal to run production on the in-memory store fired exactly as designed, at
@@ -201,10 +202,10 @@ does not mask anything.
 
 ## Next
 
-Phase 7's closing sweep, which is documentation rather than code: the README and
-Documentation.md pass, screenshots, the demo recording, and ticking every
-acceptance criterion in PLANNING section 9. Phase 6 is complete — all three AI
-surfaces from the plan are built, guarded, and verified against the real model.
+Phase 7's last three items, all documentation: the README pass, Documentation.md
+brought level with the AI surfaces, and screenshots with a demo recording. The
+acceptance criteria are ticked — all thirty, against evidence — and Phase 6 is
+complete, so nothing that remains changes a line of code.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -494,7 +495,9 @@ revision and what it removed.
 - [ ] `README.md`
 - [ ] `Documentation.md`
 - [ ] Screenshots and a demo recording
-- [ ] Every acceptance criterion in PLANNING section 9 checked
+- [x] Every acceptance criterion in PLANNING section 9 checked — all thirty
+      ticked 2026-08-13, each against the suite, deployment, or repository that
+      proves it
 
 ---
 
@@ -570,3 +573,4 @@ revision and what it removed.
 | 2026-08-13 | The coach reaches the screen, which completes the surface. A Coach button sits beside Add — only when health says there is an AI — and opens a panel that asks one question and renders the answer as it streams. The trace is the deliberate part: every tool call arrives as a readable line and is listed where the reader can see it, collapsible once the answer is in, with the token cost printed beside the answer's provenance because cost visibility is a stated guardrail rather than a debug detail. A proposal renders as a card whose one action opens the Add form pre-filled and marked, through the same seam Quick Log fills it — the form's starting values and its mid-session merges are deliberately two different channels, so the coach's hand-off can never clobber a half-typed brew and Quick Log's merge can never restart one. The stream is read by hand because EventSource cannot POST, and every event is parsed against the shared schema at the seam; the test stub answers with real SSE bytes so the parsing is what the suite exercises. 524 unit tests.                                                                                                                                                                                                                                                                                          |
 | 2026-08-13 | Live, and the brief's last requirement closed. The deployment protection toggle came off and every request answered 500 — a successful build with an instant runtime crash, which is the env loader's signature. The project's variables dated from 2026-08-10, when the plan still said `DATA_SOURCE=memory` for v1: production plus the in-memory store is the one configuration the loader refuses on purpose, and it fired three days after it was written at the first person it was written for. The value edited to `postgres`, the stale `VITE_API_BASE_URL` and `CORS_ORIGIN` from the two-project plan deleted before the first could point the built bundle at a retired domain, and the redeploy verified end to end: health reporting postgres with AI enabled, the log served from Supabase, deep links surviving a hard refresh, and a sentence read through real Gemini into a validated proposal. The live URLs are in deployment.md, which was the one graded item still open.                                                                                                                                                                                                                                                                                                                                                                                         |
 | 2026-08-13 | Flavour tags close Phase 6. Tasting notes normalise into the fourteen SCA categories the migration has seeded since Phase 2 — the join table finally earns its keep. The client asks for extraction after a save succeeds, in its own request, so the model's latency can never make saving feel slow, and a failed extraction loses tags, never brews. Tags land with `source: 'ai'` and a two-decimal confidence; a re-extraction replaces the model's previous opinion but never a human's, which the (brew, tag) primary key enforces in Postgres and the in-memory adapter mirrors deliberately. The repository contract grew seven tag cases and the provider contract five — all passing against real Supabase (106 database tests) and real Gemini (20 provider tests) before merging. Editing a brew shows what its notes read as, labelled "tagged by AI", read-only: the tags derive from the text above them, and editing the text is how you change them. 559 unit tests. Phase 6 done.                                                                                                                                                                                                                                                                                                                                                                                     |
+| 2026-08-13 | The plan brought level with what shipped, and the acceptance criteria ticked. PLANNING's API table now carries the flavour tag routes and the coach's mid-stream error semantics; section 6.2 records the switch from generateText to streamText and why; section 6.3 describes extraction as built — asked for after the save, provenance load-bearing — rather than as first imagined. All thirty criteria in section 9 are checked, each against the suite, the live deployment, or the repository that proves it, which closes the Phase 7 checklist item that asked for exactly that. What remains of the project is README, Documentation.md, screenshots and the demo.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
