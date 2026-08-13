@@ -2,8 +2,10 @@ import {
   AI_LIMITS,
   brewPageSchema,
   brewProposalSchema,
+  coachEventSchema,
   isApiErrorBody,
   type ApiErrorBody,
+  type CoachEvent,
 } from '@crema/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AiProvider } from '../ai/index.js';
@@ -39,7 +41,40 @@ function post(app: ReturnType<typeof createApp>, body: unknown) {
 const unreadable: AiProvider = {
   name: 'always-fails',
   proposeBrew: () => Promise.reject(AppError.aiParseFailed()),
+  coach: () => {
+    throw AppError.aiParseFailed();
+  },
 };
+
+/** A provider that gets one sentence out and then dies mid-answer. */
+const midStreamFailure: AiProvider = {
+  name: 'dies-mid-answer',
+  proposeBrew: () => Promise.reject(AppError.aiParseFailed()),
+  // eslint-disable-next-line @typescript-eslint/require-await
+  coach: async function* () {
+    yield { type: 'text', delta: 'Your best brews ' } as const;
+    throw new Error('socket closed: the model quoted "18g of the Ethiopian" back');
+  },
+};
+
+function postCoach(app: ReturnType<typeof createApp>, body: unknown) {
+  return app.request('/api/ai/coach', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
+}
+
+/** SSE, parsed back into the events the schema shares with the frontend. */
+async function readEvents(response: Response): Promise<CoachEvent[]> {
+  const raw = await response.text();
+
+  return raw
+    .split('\n\n')
+    .map((block) => /^data: (.+)$/m.exec(block)?.[1])
+    .filter((data): data is string => data !== undefined)
+    .map((data) => coachEventSchema.parse(JSON.parse(data)));
+}
 
 let app: ReturnType<typeof createApp>;
 
@@ -197,6 +232,84 @@ describe('POST /api/ai/quick-log', () => {
 
       expect((await app.request('/api/brews')).status).toBe(200);
     });
+  });
+});
+
+describe('POST /api/ai/coach', () => {
+  it('streams an answer as events the shared contract accepts', async () => {
+    const response = await postCoach(app, { question: 'What ratio gives me my best brews?' });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('text/event-stream');
+
+    // `readEvents` parses every event against `coachEventSchema`, so reaching
+    // the assertions below already proves the stream speaks the contract.
+    const events = await readEvents(response);
+
+    expect(events.filter((event) => event.type === 'tool-call').length).toBeGreaterThan(0);
+    expect(events.filter((event) => event.type === 'text').length).toBeGreaterThan(0);
+    expect(events.at(-1)?.type).toBe('done');
+  });
+
+  it('answers 503 before streaming when the deployment has no key', async () => {
+    // The availability check runs before the stream opens, so this is a real
+    // status code the client can branch on — not an error event inside a 200.
+    const response = await postCoach(appWith(null), { question: 'Anything?' });
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(503);
+    expect(body.error.code).toBe('AI_UNAVAILABLE');
+  });
+
+  it('answers 400 for a blank question', async () => {
+    const response = await postCoach(app, { question: '   ' });
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(body.error.details?.[0]?.field).toBe('question');
+  });
+
+  it('answers 400 for a question past the cap', async () => {
+    const response = await postCoach(app, {
+      question: 'a'.repeat(AI_LIMITS.coachQuestionMaxLength + 1),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('turns a mid-answer failure into a final error event, in our words', async () => {
+    const response = await postCoach(appWith(midStreamFailure), { question: 'Best ratio?' });
+    const events = await readEvents(response);
+    const last = events.at(-1);
+
+    if (last?.type !== 'error') throw new Error('The stream did not end with an error event.');
+
+    expect(last.code).toBe('INTERNAL_ERROR');
+    // The thrown message quoted the user's input; the event must not carry it.
+    expect(last.message).not.toContain('Ethiopian');
+    expect(last.message).toMatch(/ask again/i);
+  });
+
+  it('logs what the run cost, without logging the question', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const question = 'Why are my Aeropress brews worse than my pour-overs?';
+
+    await readEvents(await postCoach(app, { question }));
+
+    const line = JSON.parse(String(info.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(line.event).toBe('ai.coach');
+    expect(line.provider).toBe('fake');
+    expect(line.questionChars).toBe(question.length);
+    expect(JSON.stringify(line)).not.toContain('Aeropress');
+  });
+
+  it('shares the AI budget with quick-log rather than holding its own', async () => {
+    const responses: Response[] = [];
+    for (let i = 0; i < 12; i++) {
+      responses.push(await postCoach(app, { question: 'Best ratio?' }));
+    }
+
+    expect(responses.some((response) => response.status === 429)).toBe(true);
   });
 });
 

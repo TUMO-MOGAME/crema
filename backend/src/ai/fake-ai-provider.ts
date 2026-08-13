@@ -5,9 +5,16 @@ import {
   type BrewField,
   type BrewMethodSlug,
   type BrewProposal,
+  type BrewStats,
 } from '@crema/shared';
 import { AppError } from '../lib/app-error.js';
-import type { AiCallOptions, AiProvider, BrewProposalResult } from './ai-provider.js';
+import type {
+  AiCallOptions,
+  AiProvider,
+  BrewProposalResult,
+  CoachAnswerEvent,
+  CoachTools,
+} from './ai-provider.js';
 
 /**
  * A provider that reads a sentence with regular expressions instead of a model.
@@ -94,6 +101,141 @@ export class FakeAiProvider implements AiProvider {
 
     return Promise.resolve({ proposal: result.data, usage: estimateUsage(text, result.data) });
   }
+
+  /**
+   * The coach as a decision table instead of an agent loop.
+   *
+   * Each recognisable question shape maps to the tool a competent agent would
+   * reach for, and the answer is composed from what the tool actually returned
+   * — so a test that seeds three V60 brews and asks about V60 sees those three
+   * brews inform the text, exactly the property the real agent is held to. The
+   * text itself is plain and formulaic, which is fine: the suite asserts the
+   * events, the ordering, and the numbers, never the prose style.
+   */
+  async *coach(
+    question: string,
+    tools: CoachTools,
+    options: AiCallOptions = {},
+  ): AsyncGenerator<CoachAnswerEvent> {
+    options.signal?.throwIfAborted();
+
+    const asked = question.toLowerCase();
+    let toolCalls = 0;
+    let composed = '';
+
+    /** Yielding through these keeps the count honest without a tally at each site. */
+    const emit = {
+      tool: (event: Extract<CoachAnswerEvent, { type: 'tool-call' }>) => {
+        toolCalls += 1;
+        return event;
+      },
+      text: (delta: string) => {
+        composed += delta;
+        return { type: 'text', delta } as const;
+      },
+    };
+
+    const similar = /similar to (?:the |my )?["']?([\w' -]+?)["']?[?.!]?$/i.exec(question);
+    const method = BREW_METHOD_SLUGS.find((slug) =>
+      new RegExp(`\\b${slug.replace('-', '[ -]?')}\\b`).test(asked),
+    );
+
+    if (similar?.[1]) {
+      const found = await tools.findSimilarBrews({ beans: similar[1] });
+      yield emit.tool({ type: 'tool-call', tool: 'findSimilarBrews', summary: found.summary });
+
+      yield emit.text(
+        found.data.length === 0
+          ? `Nothing in the log matches "${similar[1]}".`
+          : `Found ${found.data.length} matching ${found.data.length === 1 ? 'brew' : 'brews'}. `,
+      );
+      if (found.data.length > 0) {
+        const best = [...found.data].sort((a, b) => b.rating - a.rating)[0];
+        if (best) {
+          yield emit.text(`The best was ${best.beans} on the ${best.method} at 1:${best.ratio}, rated ${best.rating}.`); // prettier-ignore
+        }
+      }
+    } else if (/propose|should i brew|next brew|tomorrow/.test(asked)) {
+      const { summary, data: stats } = await tools.getBrewStats();
+      yield emit.tool({ type: 'tool-call', tool: 'getBrewStats', summary });
+
+      const proposal = proposeFromStats(stats);
+      yield emit.tool({
+        type: 'tool-call',
+        tool: 'proposeBrew',
+        summary: 'Proposed a brew for the user to confirm in the Add form.',
+      });
+      yield { type: 'proposal', proposal };
+      yield emit.text('Here is a starting point from your best-rated method — confirm it in the form.'); // prettier-ignore
+    } else if (method) {
+      const listed = await tools.listBrews({ method });
+      yield emit.tool({ type: 'tool-call', tool: 'listBrews', summary: listed.summary });
+
+      if (listed.data.length === 0) {
+        yield emit.text(`The log has no ${method} brews yet.`);
+      } else {
+        const average =
+          listed.data.reduce((sum, brew) => sum + brew.rating, 0) / listed.data.length;
+        yield emit.text(`Your ${listed.data.length} ${method} ${listed.data.length === 1 ? 'brew' : 'brews'} `); // prettier-ignore
+        yield emit.text(`average ${(Math.round(average * 100) / 100).toString()} out of 5.`);
+      }
+    } else if (/ratio|best|stats|average|rating/.test(asked)) {
+      const { summary, data: stats } = await tools.getBrewStats();
+      yield emit.tool({ type: 'tool-call', tool: 'getBrewStats', summary });
+
+      if (stats.brewCount === 0) {
+        yield emit.text('The log is empty — brew something and ask me again.');
+      } else {
+        const best = bestRatedMethod(stats);
+        yield emit.text(`Across ${stats.brewCount} brews your average rating is ${stats.averageRating ?? '—'}. `); // prettier-ignore
+        if (best) {
+          yield emit.text(`${best.label} is your strongest method: ${best.averageRating} average at 1:${best.averageRatio}.`); // prettier-ignore
+        }
+      }
+    } else {
+      yield emit.text(
+        'I answer questions about your own brew log — ratios, methods, what to brew next.',
+      );
+    }
+
+    yield {
+      type: 'done',
+      usage: {
+        inputTokens: Math.ceil(question.length / 4),
+        outputTokens: Math.ceil(composed.length / 4),
+      },
+      toolCalls,
+    };
+  }
+}
+
+/**
+ * A candidate from the numbers the log already holds: the best-rated method at
+ * its own average ratio, on an 18g dose. Every field is the fake's guess, so
+ * every field is inferred — which is also what exercises the highlight path.
+ */
+function proposeFromStats(stats: BrewStats): BrewProposal {
+  const best = bestRatedMethod(stats);
+  const coffeeGrams = 18;
+  const ratio = best?.averageRatio ?? 16;
+
+  const candidate = {
+    brew: {
+      method: best?.method ?? 'v60',
+      coffeeGrams,
+      waterGrams: Math.round(coffeeGrams * ratio),
+    },
+    inferred: ['method', 'coffeeGrams', 'waterGrams'],
+  };
+
+  const result = brewProposalSchema.safeParse(candidate);
+  if (!result.success) throw AppError.aiParseFailed();
+
+  return result.data;
+}
+
+function bestRatedMethod(stats: BrewStats) {
+  return [...stats.byMethod].sort((a, b) => b.averageRating - a.averageRating)[0];
 }
 
 /**

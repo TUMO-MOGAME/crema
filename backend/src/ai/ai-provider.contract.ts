@@ -1,6 +1,8 @@
-import { brewProposalSchema } from '@crema/shared';
+import { brewProposalSchema, type CreateBrewInput } from '@crema/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AiProvider } from './ai-provider.js';
+import { InMemoryBrewRepository } from '../repositories/in-memory-brew.repository.js';
+import type { AiProvider, CoachAnswerEvent, CoachTools } from './ai-provider.js';
+import { createCoachTools } from './coach-tools.js';
 
 /**
  * The suite every `AiProvider` implementation must pass.
@@ -133,5 +135,104 @@ export function describeAiProviderContract(providerName: string, harness: AiProv
         expect(proposal.brew.rating).not.toBe(99);
       });
     });
+
+    describe('coach', () => {
+      it('answers a question about the log with tools, text, and one final done', async () => {
+        const events = await collect(provider.coach(A_QUESTION, seededTools()));
+
+        // The ordering contract, event by event: the agent read the log before
+        // answering, said something, and said what it cost exactly once — last.
+        expect(events.filter((event) => event.type === 'tool-call').length).toBeGreaterThan(0);
+        expect(events.filter((event) => event.type === 'text').length).toBeGreaterThan(0);
+        expect(events.filter((event) => event.type === 'done')).toHaveLength(1);
+        expect(events.at(-1)?.type).toBe('done');
+      });
+
+      it('accounts for the run in the done event', async () => {
+        const events = await collect(provider.coach(A_QUESTION, seededTools()));
+        const done = events.find((event) => event.type === 'done');
+
+        if (done?.type !== 'done') throw new Error('No done event.');
+
+        expect(done.usage.inputTokens).toBeGreaterThan(0);
+        expect(done.usage.outputTokens).toBeGreaterThanOrEqual(0);
+        expect(done.toolCalls).toBe(events.filter((event) => event.type === 'tool-call').length);
+      });
+
+      it('gives every tool call a trace line a person can read', async () => {
+        const events = await collect(provider.coach(A_QUESTION, seededTools()));
+
+        for (const event of events) {
+          if (event.type === 'tool-call') expect(event.summary).toMatch(/\S/);
+        }
+      });
+
+      it('proposes through the contract when asked what to brew', async () => {
+        const events = await collect(
+          provider.coach('What should I brew tomorrow? Propose something.', seededTools()),
+        );
+
+        const proposals = events.filter((event) => event.type === 'proposal');
+
+        // The one write-shaped thing the coach can do goes through the same
+        // schema every proposal does — a candidate the Add form can trust.
+        expect(proposals.length).toBeGreaterThan(0);
+        for (const event of proposals) {
+          expect(() => brewProposalSchema.parse(event.proposal)).not.toThrow();
+        }
+      });
+
+      it('rejects an already-aborted call before reading anything', async () => {
+        let reads = 0;
+        const tools = seededTools();
+        const counted: CoachTools = {
+          listBrews: (args) => ((reads += 1), tools.listBrews(args)),
+          getBrewStats: () => ((reads += 1), tools.getBrewStats()),
+          findSimilarBrews: (args) => ((reads += 1), tools.findSimilarBrews(args)),
+        };
+
+        await expect(
+          collect(provider.coach(A_QUESTION, counted, { signal: AbortSignal.abort() })),
+        ).rejects.toThrow();
+        expect(reads).toBe(0);
+      });
+    });
   });
+}
+
+/** The question PLANNING section 6.2 opens with. */
+const A_QUESTION = 'What ratio gives me my best V60s?';
+
+/**
+ * The real tools over a known log, because a coach contract asserted against
+ * stub tools would prove the loop runs and nothing about it being wired to a
+ * log. Three V60s at different ratios and a Chemex give the stats a best
+ * method to name and the list a filter worth applying.
+ */
+function seededTools(): CoachTools {
+  const seed: CreateBrewInput[] = [
+    brew('Ethiopian Yirgacheffe', 'v60', 18, 288, 5, 'Blackcurrant, jasmine'),
+    brew('Ethiopian Yirgacheffe', 'v60', 18, 306, 3, 'Thin, drifting'),
+    brew('Kenyan AA', 'v60', 15, 250, 4, 'Bright, tomato sweetness'),
+    brew('Brazilian Santos', 'chemex', 30, 480, 2, 'Muddy, over-extracted'),
+  ];
+
+  return createCoachTools(new InMemoryBrewRepository(seed));
+}
+
+function brew(
+  beans: string,
+  method: CreateBrewInput['method'],
+  coffeeGrams: number,
+  waterGrams: number,
+  rating: number,
+  tastingNotes: string,
+): CreateBrewInput {
+  return { beans, method, coffeeGrams, waterGrams, rating, tastingNotes };
+}
+
+async function collect(events: AsyncIterable<CoachAnswerEvent>): Promise<CoachAnswerEvent[]> {
+  const collected: CoachAnswerEvent[] = [];
+  for await (const event of events) collected.push(event);
+  return collected;
 }

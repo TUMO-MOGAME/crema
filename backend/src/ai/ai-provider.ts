@@ -1,4 +1,4 @@
-import type { BrewProposal } from '@crema/shared';
+import type { BrewProposal, BrewStats, CoachToolName } from '@crema/shared';
 
 /**
  * The seam between this application and whatever is generating text.
@@ -17,11 +17,13 @@ import type { BrewProposal } from '@crema/shared';
  * the adapter's problem, exactly as `method_id` is Postgres's problem and never
  * appears in `BrewRepository`. What a caller asks for is a brew proposal.
  *
- * The interface is deliberately one method wide today. The coach in PLANNING
- * section 6.2 is a tool-calling loop over the user's own log, and its shape
- * depends on the tools it is given — so it is added when it is built rather
- * than guessed at now. An interface designed around a feature nobody has
- * written yet is a shape that has to be corrected once the feature exists.
+ * The interface stayed one method wide until the coach existed, on the theory
+ * that an interface designed around a feature nobody has written yet is a shape
+ * that has to be corrected once the feature exists. The coach is now written,
+ * and its shape came out as predicted only in outline: a tool-calling loop,
+ * yes, but streamed — so the method returns events as they happen rather than
+ * an answer once it is over, because an answer that takes ten seconds to
+ * compose and arrives all at once reads as a hang.
  */
 export interface AiProvider {
   /**
@@ -54,7 +56,87 @@ export interface AiProvider {
    * for the whole time.
    */
   proposeBrew(text: string, options?: AiCallOptions): Promise<BrewProposalResult>;
+
+  /**
+   * Answer one question about the caller's log, with tool access to it.
+   *
+   * The tools are handed in rather than owned, for the same reason the routes
+   * receive a repository: the provider knows how to run an agent loop and
+   * nothing about where brews live. Everything it can learn about the log
+   * arrives through `tools`, which are read-only by construction.
+   *
+   * What comes back is the answer as it happens: text deltas, a trace line per
+   * tool call, any brew the agent proposes, and a final `done` carrying usage.
+   * The contract on ordering is small and load-bearing — `done` is the last
+   * event and appears exactly once, each `tool-call` is yielded before the text
+   * that depends on it, and every `proposal` has already passed
+   * `brewProposalSchema`. A failure mid-answer throws out of the iterable
+   * rather than yielding an event, so the caller has one error path.
+   */
+  coach(
+    question: string,
+    tools: CoachTools,
+    options?: AiCallOptions,
+  ): AsyncIterable<CoachAnswerEvent>;
 }
+
+/**
+ * What the agent may do to the log: read it three ways, and propose to it —
+ * never write. `proposeBrew` is absent on purpose: proposing is not a question
+ * the log can answer, so the *provider* owns that tool and emits its result as
+ * a `proposal` event after validating it, the same contract Quick Log honours.
+ *
+ * Each result carries a one-line human `summary` alongside the data. The data
+ * is for the model; the summary is what the trace panel shows the reader, and
+ * writing it here — next to the query it describes — is what keeps the two
+ * telling the same story.
+ */
+export interface CoachTools {
+  listBrews(args: ListBrewsToolArgs): Promise<CoachToolResult<CoachBrew[]>>;
+  getBrewStats(): Promise<CoachToolResult<BrewStats>>;
+  findSimilarBrews(args: { beans: string }): Promise<CoachToolResult<CoachBrew[]>>;
+}
+
+/**
+ * Every property tolerates an explicit `undefined`, because the arguments come
+ * from a model through a schema whose optionals parse to exactly that — and
+ * `exactOptionalPropertyTypes` holds the seam to the difference.
+ */
+export interface ListBrewsToolArgs {
+  method?: string | undefined;
+  minRating?: number | undefined;
+  limit?: number | undefined;
+}
+
+export interface CoachToolResult<T> {
+  summary: string;
+  data: T;
+}
+
+/**
+ * A brew as the model reads it: the fields that inform advice, and no ids,
+ * no timestamps-of-record, no soft-delete bookkeeping. Smaller on purpose —
+ * every row here is prompt tokens on every question that lists brews.
+ */
+export interface CoachBrew {
+  beans: string;
+  method: string;
+  coffeeGrams: number;
+  waterGrams: number;
+  ratio: number;
+  rating: number;
+  tastingNotes: string;
+  brewedAt: string;
+}
+
+/** The provider's half of the stream vocabulary — everything but `error`,
+ * because a provider that fails throws, and turning that into an event for the
+ * wire is the route's job. */
+export type CoachAnswerEvent =
+  | { type: 'text'; delta: string }
+  | { type: 'tool-call'; tool: CoachToolName; summary: string }
+  | { type: 'proposal'; proposal: BrewProposal }
+  | { type: 'done'; usage: AiUsage; toolCalls: number };
 
 export interface AiCallOptions {
   /** Aborts the call. Providers reject rather than resolving half an answer. */

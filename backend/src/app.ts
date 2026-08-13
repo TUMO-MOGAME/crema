@@ -15,6 +15,7 @@ import { createBrewRoutes } from './routes/brews.js';
 import { createHealthRoutes } from './routes/health.js';
 import { createStatsRoutes } from './routes/stats.js';
 import { BrewService } from './services/brew.service.js';
+import { CoachService } from './services/coach.service.js';
 import { QuickLogService } from './services/quick-log.service.js';
 import type { AppEnv } from './types.js';
 
@@ -154,12 +155,13 @@ export function createApp(
   // where a key happens to be configured, and pass for the wrong reason.
   const ai = 'ai' in dependencies ? (dependencies.ai ?? null) : createAiProvider();
   const quickLog = new QuickLogService(ai);
+  const coach = new CoachService(ai, dependencies.brews);
 
   app.route('/api', createHealthRoutes(quickLog));
   app.route('/api', brewMethodRoutes);
   app.route('/api', createBrewRoutes(brews));
   app.route('/api', createStatsRoutes(brews));
-  app.route('/api', createAiRoutes(quickLog));
+  app.route('/api', createAiRoutes(quickLog, coach));
 
   app.notFound(notFoundHandler);
   app.onError(errorHandler);
