@@ -22,7 +22,18 @@ import type { ZodType } from 'zod';
  */
 const DEFAULT_BASE_URL = import.meta.env.DEV ? 'http://localhost:3000' : '';
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+/**
+ * Exported for the one caller `apiRequest` cannot serve: the coach's
+ * server-sent event stream, which reads a body incrementally where this file's
+ * contract is "parse a complete response". Both build their URLs from the same
+ * value, so the API cannot live in two places.
+ */
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_BASE_URL).replace(
+  /\/+$/,
+  '',
+);
+
+const BASE_URL = API_BASE_URL;
 
 /**
  * Every failure the client can see, in one type.

@@ -45,6 +45,15 @@ interface BrewFormDialogProps {
    */
   proposal: BrewProposal | null;
   onProposal: (proposal: BrewProposal) => void;
+  /**
+   * A proposal to open *on*, for the coach's hand-off — its fields become the
+   * Add form's starting values. Distinct from `proposal` even though the coach
+   * sets both, because they answer different questions with different
+   * lifetimes: `seed` is what the form starts as and only changes alongside an
+   * open, while `proposal` is what the chips mark and also arrives mid-session
+   * from Quick Log — which must merge into typed fields, never restart them.
+   */
+  seed: BrewProposal | null;
 }
 
 export function BrewFormDialog({
@@ -58,6 +67,7 @@ export function BrewFormDialog({
   error,
   proposal,
   onProposal,
+  seed,
 }: BrewFormDialogProps) {
   const {
     register,
@@ -81,14 +91,7 @@ export function BrewFormDialog({
     // would be submitted with nothing on screen saying so.
     const { brewedAt: _stale, ...current } = getValues();
 
-    // A field the model did not mention must stay what the person typed, so
-    // only fields with values take part in the merge — spreading the partial
-    // as-is would let an explicit undefined overwrite a typed one.
-    const proposed = Object.fromEntries(
-      Object.entries(next.brew).filter(([, value]) => value !== undefined),
-    ) as Partial<CreateBrewInput>;
-
-    reset({ ...current, ...proposed });
+    reset({ ...current, ...definedFields(next.brew) });
     onProposal(next);
   };
 
@@ -111,6 +114,11 @@ export function BrewFormDialog({
     // `DefaultValues` rather than the input type: an empty Add form legitimately
     // has no method and no doses yet, and the schema type says those are
     // required — which they are, at submit, which is where it is checked.
+    //
+    // The seed only ever changes alongside an open, so this cannot re-fire
+    // mid-session and overwrite what someone has typed — that property is what
+    // `seed` exists to carry, and why Quick Log's mid-session proposals go
+    // through `applyProposal` instead.
     const values: DefaultValues<CreateBrewInput> = brew
       ? {
           beans: brew.beans,
@@ -120,10 +128,10 @@ export function BrewFormDialog({
           rating: brew.rating,
           tastingNotes: brew.tastingNotes,
         }
-      : { beans: '', tastingNotes: '' };
+      : { beans: '', tastingNotes: '', ...definedFields(seed?.brew ?? {}) };
 
     reset(values);
-  }, [open, brew, reset]);
+  }, [open, brew, seed, reset]);
 
   /**
    * A 400 or 422 from the API names the field it refused. Routing those back
@@ -311,6 +319,15 @@ export function BrewFormDialog({
 /** A proposed brew time, in the reader's locale rather than as an ISO string. */
 function formatBrewedAt(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/**
+ * A field the model did not mention must stay what the person typed — or stay
+ * empty — so only fields with values take part in a merge. Spreading the
+ * partial as-is would let an explicit undefined overwrite either.
+ */
+function definedFields(brew: BrewProposal['brew']): Partial<CreateBrewInput> {
+  return Object.fromEntries(Object.entries(brew).filter(([, value]) => value !== undefined));
 }
 
 /**

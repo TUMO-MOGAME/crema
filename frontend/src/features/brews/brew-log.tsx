@@ -6,6 +6,8 @@ import { ThemeToggle } from '../../components/theme-toggle';
 import { useToast } from '../../components/toast-context';
 import { brewCountTitle, useDocumentTitle } from '../../hooks/use-document-title';
 import { ApiError } from '../../lib/api-client';
+import { CoachDialog } from '../coach/coach-dialog';
+import { useAiEnabled } from '../coach/use-ai';
 import { BrewFormDialog } from './brew-form-dialog';
 import { BrewRow } from './brew-row';
 import { DeleteConfirmDialog } from './delete-confirm-dialog';
@@ -26,13 +28,22 @@ export function BrewLog() {
   const [deleting, setDeleting] = useState<Brew | null>(null);
 
   /**
-   * The quick-log proposal the form is currently showing, if any. It lives
-   * here rather than in the dialog because its lifetime is the dialog
-   * *session*, and the sessions begin and end in these handlers: opening the
-   * form for anything starts clean, so one sentence's guesses can never mark
-   * another brew's fields.
+   * The proposal the form is currently showing, if any. It lives here rather
+   * than in the dialog because its lifetime is the dialog *session*, and the
+   * sessions begin and end in these handlers: opening the form for anything
+   * starts clean, so one proposal's guesses can never mark another brew's
+   * fields.
+   *
+   * `seed` is the coach's half of the same idea — the proposal the Add form
+   * opens on. Two states because they change at different moments: Quick Log
+   * sets `proposal` mid-session while `seed` stays put, which is exactly what
+   * lets the form's open-effect depend on `seed` without ever clobbering a
+   * half-typed form.
    */
   const [proposal, setProposal] = useState<BrewProposal | null>(null);
+  const [seed, setSeed] = useState<BrewProposal | null>(null);
+  const [coachOpen, setCoachOpen] = useState(false);
+  const aiEnabled = useAiEnabled();
 
   const brews = useBrews(method || undefined);
   const methods = useBrewMethods();
@@ -55,18 +66,29 @@ export function BrewLog() {
 
   const openAdd = () => {
     setProposal(null);
+    setSeed(null);
     setAdding(true);
   };
 
   const openEdit = (brew: Brew) => {
     setProposal(null);
+    setSeed(null);
     setEditing(brew);
+  };
+
+  /** The coach's hand-off: its candidate becomes the Add form's starting point. */
+  const openAddFromCoach = (candidate: BrewProposal) => {
+    setCoachOpen(false);
+    setProposal(candidate);
+    setSeed(candidate);
+    setAdding(true);
   };
 
   const closeForm = () => {
     setAdding(false);
     setEditing(null);
     setProposal(null);
+    setSeed(null);
     create.reset();
     update.reset();
   };
@@ -132,7 +154,14 @@ export function BrewLog() {
           Brew log
         </h1>
 
-        <Button onClick={openAdd}>Add</Button>
+        <div className="flex items-center gap-2">
+          {aiEnabled && (
+            <Button variant="quiet" onClick={() => setCoachOpen(true)}>
+              Coach
+            </Button>
+          )}
+          <Button onClick={openAdd}>Add</Button>
+        </div>
       </header>
 
       <OfflineBanner />
@@ -201,6 +230,13 @@ export function BrewLog() {
         error={create.error ?? update.error}
         proposal={proposal}
         onProposal={setProposal}
+        seed={seed}
+      />
+
+      <CoachDialog
+        open={coachOpen}
+        onClose={() => setCoachOpen(false)}
+        onProposal={openAddFromCoach}
       />
 
       <DeleteConfirmDialog
