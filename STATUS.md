@@ -22,11 +22,11 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 3     | API — Hono, services, in-memory repository    | **done**    | 100%     |
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
-| 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 45%      |
+| 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 55%      |
 | 7     | Ship — Vercel, docs, demo                     | in progress | 40%      |
 
 **Overall: planning and phases 0 through 5 are complete, and both remaining
-phases are under way.** 486 unit tests, 99 database tests, 10 provider tests and
+phases are under way.** 500 unit tests, 99 database tests, 10 provider tests and
 16 end-to-end journeys passing, `main` protected and green. Supabase is
 connected and the app is deployed: the third production deploy built green after
 the two failures the deployment log records. What remains is making the URL
@@ -154,7 +154,7 @@ the same commit.
 | Check                      | Result                                                           |
 | -------------------------- | ---------------------------------------------------------------- |
 | `npm run verify`           | green — format, lint, typecheck, test                            |
-| Unit and integration tests | 486 passing (71 shared, 269 backend, 146 web)                    |
+| Unit and integration tests | 500 passing (71 shared, 269 backend, 160 web)                    |
 | Database tests             | 99 passing against Supabase, and against Postgres 17 unseeded    |
 | AI provider tests          | 10 passing against Gemini, run separately by `npm run test:ai`   |
 | End-to-end journeys        | 16 passing against production builds                             |
@@ -202,12 +202,12 @@ does not mask anything.
 
 ## Next
 
-Phase 6 — the AI surfaces, starting with the Quick Log frontend: the sentence
-box in the Add form, the pre-fill from `POST /api/ai/quick-log`, and the
-highlight on what the model inferred rather than was told. Then the Brew Coach,
-which answers questions from the log with its reasoning shown. Both degrade to a
-clean 503 without a key, which the health endpoint already reports and the API
-already returns.
+Phase 6 — the Brew Coach. Quick Log is now complete end to end, so what remains
+is the agent: the four read-only tools over the log, streamed answers, the
+visible tool-call trace, and the flavour tag extraction into `brew_flavor_tags`.
+It degrades to a clean 503 without a key, which the health endpoint already
+reports, the API already returns, and the frontend now already respects — the AI
+surfaces render only when health says there is an AI to talk to.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -462,7 +462,7 @@ control that opened it.
 
 - [x] Provider abstraction with a deterministic fake for tests
 - [x] Quick Log — structured output parsed by `createBrewSchema`
-- [ ] Pre-filled form with inferred-field highlighting
+- [x] Pre-filled form with inferred-field highlighting
 - [ ] Coach agent with `listBrews`, `getBrewStats`, `findSimilarBrews`,
       `proposeBrew`
 - [ ] Streaming responses
@@ -559,3 +559,4 @@ revision and what it removed.
 | 2026-08-09 | Gemini wired in behind the seam, and the contract suite earned its keep on the first run. `GeminiAiProvider` passes all ten tests the fake passes — tests written before the adapter existed and not adjusted to accommodate what the model turned out to do. Two things came out of running it for real. The prompt originally told the model that the dose is the smaller amount and the water the larger, which is a reasonable heuristic and wrong: given "900g through the V60, 12 water" the model dutifully swapped them, rewriting what the person said. It now reports the two as the sentence assigns them however odd the result looks. And the timeout was set from measurement rather than taste — typical calls return in 1.8 to 5 seconds, but the same sentence came back in 2.0s on one attempt and 15.9s on the next, so a 15 second ceiling was failing calls that were about to succeed. It is 30 seconds, which bounds the pathological case without cutting into the normal range. Thinking is set to `low`: on this task the default budget spends 273 reasoning tokens to reach the identical object, nine times the output for the same answer. `createAiProvider` now exists, because there is finally a provider to return honestly. 468 unit tests, plus 10 against the real model.                                                                          |
 | 2026-08-09 | `POST /api/ai/quick-log` serves the first AI surface. A 200 rather than a 201, because nothing is created — what comes back is a candidate the user confirms in the normal Add form, and `POST /api/brews` is still the only route that writes a brew. Guardrails are the point of the endpoint as much as the extraction: a 500-character cap in the shared schema, the 16 KB body limit underneath it, a 10-per-minute budget mounted on `/api/ai/*` because a request here costs a model call rather than a map lookup, the client's disconnect handed to the provider so a user who navigates away stops paying for tokens, and a 503 with `AI_UNAVAILABLE` on a deployment with no key. Sixteen route tests cover every one of those against the fake, with no key and no bill. Two things were corrected on the way. `/api/health` was reporting `ai.enabled` from the environment while the routes used the injected provider, so an app built without one on a machine that had a key would have advertised a surface that answered 503 — it now reads the service the requests go to. And the default wiring used `dependencies.ai ?? createAiProvider()`, which would have handed a test asserting the 503 path a real provider on any machine with a key configured, passing for the wrong reason. Verified end to end against real Gemini and real Supabase. 486 unit tests. |
 | 2026-08-13 | Deployed. Five commits fixed what two failed deploys surfaced — the build importing the test runner, the frontend's headers living in a file services mode never reads, and the service entrypoint naming the file that listens rather than the file that exports the app — and the third production deploy built green. All five are merged to `main` on both remotes, the fix branch is deleted everywhere, and the plan's deployment section now describes the single-origin services setup that actually shipped rather than the two projects it proposed. One thing holds the URL back: Vercel's default deployment protection answers every request with a login redirect until it is switched off in the dashboard, which is recorded under Blocked on.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 2026-08-13 | Quick Log reaches the form, which closes the feature. A sentence box sits at the top of the Add dialog — only there, and only when `/api/health` says the deployment has an AI — and hands the sentence to `POST /api/ai/quick-log`. What comes back pre-fills the form as values to check: fields the model inferred rather than was told wear an accent chip and border, the mark is part of the control's accessible description rather than only a colour, and it comes off the moment the reader edits the field. A proposed `brewedAt` is said in a sentence above the buttons, because it is the one field with no visible control and a value that rode along silently would be exactly the surprise the confirmation step exists to prevent. Nothing reaches `POST /api/brews` until Save — the test suite asserts that directly. Fourteen new web tests, two new measured contrast pairings for the chip and its border. 500 unit tests.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
