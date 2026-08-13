@@ -1,4 +1,10 @@
-import { BREW_METHODS, BREW_PAGE, type Brew, type BrewProposal } from '@crema/shared';
+import {
+  BREW_METHODS,
+  BREW_PAGE,
+  type Brew,
+  type BrewProposal,
+  type CoachEvent,
+} from '@crema/shared';
 import { vi } from 'vitest';
 
 /** `fetch` takes three shapes of first argument; only one is already a string. */
@@ -55,6 +61,8 @@ interface StubOptions {
   ai?: {
     /** What `POST /api/ai/quick-log` answers. */
     proposal?: BrewProposal;
+    /** What `POST /api/ai/coach` streams, formatted as SSE by the stub. */
+    coach?: CoachEvent[];
     /** A failure instead: the status and the message the API would send. */
     status?: number;
     message?: string;
@@ -118,7 +126,7 @@ export function stubApi({
       return json({ status: 'ok', ai: { enabled: ai !== undefined } });
     }
 
-    if (url.includes('/api/ai/quick-log')) {
+    if (url.includes('/api/ai/')) {
       if (!ai) {
         return json(
           { error: { code: 'AI_UNAVAILABLE', message: 'AI is not configured.', requestId: 'r1' } },
@@ -136,6 +144,23 @@ export function stubApi({
             },
           },
           ai.status,
+        );
+      }
+
+      if (url.includes('/api/ai/coach')) {
+        // Encoded the way the API encodes it, so the client's SSE parsing is
+        // what these tests exercise rather than a shortcut around it.
+        const events: CoachEvent[] = ai.coach ?? [
+          { type: 'text', delta: 'Ask me about your log.' },
+          { type: 'done', usage: { inputTokens: 4, outputTokens: 6 }, toolCalls: 0 },
+        ];
+
+        const sse = events
+          .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+          .join('');
+
+        return Promise.resolve(
+          new Response(sse, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
         );
       }
 

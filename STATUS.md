@@ -22,11 +22,11 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 3     | API — Hono, services, in-memory repository    | **done**    | 100%     |
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
-| 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 75%      |
+| 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 90%      |
 | 7     | Ship — Vercel, docs, demo                     | in progress | 40%      |
 
 **Overall: planning and phases 0 through 5 are complete, and both remaining
-phases are under way.** 519 unit tests, 99 database tests, 15 provider tests and
+phases are under way.** 524 unit tests, 99 database tests, 15 provider tests and
 16 end-to-end journeys passing, `main` protected and green. Supabase is
 connected and the app is deployed: the third production deploy built green after
 the two failures the deployment log records. What remains is making the URL
@@ -154,7 +154,7 @@ the same commit.
 | Check                      | Result                                                           |
 | -------------------------- | ---------------------------------------------------------------- |
 | `npm run verify`           | green — format, lint, typecheck, test                            |
-| Unit and integration tests | 519 passing (78 shared, 281 backend, 160 web)                    |
+| Unit and integration tests | 524 passing (78 shared, 281 backend, 165 web)                    |
 | Database tests             | 99 passing against Supabase, and against Postgres 17 unseeded    |
 | AI provider tests          | 15 passing against Gemini, run separately by `npm run test:ai`   |
 | End-to-end journeys        | 16 passing against production builds                             |
@@ -202,13 +202,11 @@ does not mask anything.
 
 ## Next
 
-Phase 6 — the coach's frontend. The agent itself is live behind
-`POST /api/ai/coach`: four read-only tools over the log, answers streamed as
-server-sent events, proposals through the same schema Quick Log confirms
-through, and the real model passing the same contract suite as the fake. What
-remains is the panel — the question box, the streamed answer, the visible
-tool-call trace built from the summary each event already carries — and then the
-flavour tag extraction into `brew_flavor_tags`.
+Phase 6 — what remains is the flavour tag extraction into `brew_flavor_tags` and
+the explicit no-key verification pass. Then Phase 7 closes the project out: live
+URLs into deployment.md once the deployment's environment variables land, the
+README and Documentation.md pass, screenshots, the demo recording, and ticking
+every acceptance criterion in PLANNING section 9.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -465,14 +463,17 @@ control that opened it.
 - [x] Quick Log — structured output parsed by `createBrewSchema`
 - [x] Pre-filled form with inferred-field highlighting
 - [x] Coach agent with `listBrews`, `getBrewStats`, `findSimilarBrews`,
-      `proposeBrew` — served by `POST /api/ai/coach`; the panel that shows it is
-      what remains
-- [x] Streaming responses — server-sent events the shared schema validates
-- [ ] Visible tool-call trace
+      `proposeBrew` — served by `POST /api/ai/coach`, asked from the Coach panel
+- [x] Streaming responses — server-sent events the shared schema validates,
+      rendered as they arrive
+- [x] Visible tool-call trace — every tool call listed as a readable line,
+      collapsible once the answer is in
 - [ ] Flavour tag extraction into `brew_flavor_tags`
-- [ ] Rate limiting, timeouts, input caps
+- [x] Rate limiting, timeouts, input caps — the 10-a-minute `/api/ai/*` budget,
+      bounded calls in both providers, capped inputs in the shared schemas
 - [ ] Verified: full app works with `GEMINI_API_KEY` unset
-- [ ] Token usage logged and surfaced
+- [x] Token usage logged and surfaced — logged per call on both surfaces, and
+      the coach's answer says what it cost on screen
 
 ### Phase 7 — Ship
 
@@ -563,3 +564,4 @@ revision and what it removed.
 | 2026-08-13 | Deployed. Five commits fixed what two failed deploys surfaced — the build importing the test runner, the frontend's headers living in a file services mode never reads, and the service entrypoint naming the file that listens rather than the file that exports the app — and the third production deploy built green. All five are merged to `main` on both remotes, the fix branch is deleted everywhere, and the plan's deployment section now describes the single-origin services setup that actually shipped rather than the two projects it proposed. One thing holds the URL back: Vercel's default deployment protection answers every request with a login redirect until it is switched off in the dashboard, which is recorded under Blocked on.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 2026-08-13 | Quick Log reaches the form, which closes the feature. A sentence box sits at the top of the Add dialog — only there, and only when `/api/health` says the deployment has an AI — and hands the sentence to `POST /api/ai/quick-log`. What comes back pre-fills the form as values to check: fields the model inferred rather than was told wear an accent chip and border, the mark is part of the control's accessible description rather than only a colour, and it comes off the moment the reader edits the field. A proposed `brewedAt` is said in a sentence above the buttons, because it is the one field with no visible control and a value that rode along silently would be exactly the surprise the confirmation step exists to prevent. Nothing reaches `POST /api/brews` until Save — the test suite asserts that directly. Fourteen new web tests, two new measured contrast pairings for the chip and its border. 500 unit tests.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 2026-08-13 | The Brew Coach agent, behind the seam that waited for it. `POST /api/ai/coach` answers one question about the log as a stream of server-sent events — text as it is generated, a readable trace line for every tool call, any proposal the agent makes, and a final accounting of tokens and tool calls — with the event vocabulary in `@crema/shared`, parsed by the backend's tests and soon the frontend from one schema. The agent holds four tools: three read-only over the same repository the routes use, and `proposeBrew`, which the provider owns and pushes through the same normalisation Quick Log uses, so a candidate a form would refuse cannot reach one. The 503 for a keyless deployment lands before the stream opens and is a real status code; a failure mid-answer becomes the stream's last event, in our words, because model errors can quote their input. The fake answers the same questions from the same tools deterministically, which is what lets the route suite run the whole loop keyless — and the contract grew five coach cases that the real model then passed unchanged on the first run. 519 unit tests, 15 against Gemini.                                                                                                                                                                                                                   |
+| 2026-08-13 | The coach reaches the screen, which completes the surface. A Coach button sits beside Add — only when health says there is an AI — and opens a panel that asks one question and renders the answer as it streams. The trace is the deliberate part: every tool call arrives as a readable line and is listed where the reader can see it, collapsible once the answer is in, with the token cost printed beside the answer's provenance because cost visibility is a stated guardrail rather than a debug detail. A proposal renders as a card whose one action opens the Add form pre-filled and marked, through the same seam Quick Log fills it — the form's starting values and its mid-session merges are deliberately two different channels, so the coach's hand-off can never clobber a half-typed brew and Quick Log's merge can never restart one. The stream is read by hand because EventSource cannot POST, and every event is parsed against the shared schema at the seam; the test stub answers with real SSE bytes so the parsing is what the suite exercises. 524 unit tests.                                                                                                                                                                                                                                                                                          |
