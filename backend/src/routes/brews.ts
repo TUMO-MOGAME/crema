@@ -48,6 +48,14 @@ export function createBrewRoutes(service: BrewService): Hono<AppEnv> {
       return c.json(await service.get(brewId(c)));
     })
 
+    .get('/brews/:id/flavor-tags', async (c) => {
+      // Tags ride on their own route rather than inside the brew, because most
+      // reads of a brew never look at them — the list renders hundreds of rows
+      // and wants none of this — while the one screen that does look fetches
+      // exactly one brew's worth.
+      return c.json(await service.flavorTags(brewId(c)));
+    })
+
     .post('/brews', async (c) => {
       const input = parseOrThrow(createBrewSchema, await jsonBody(c));
       const brew = await service.create(input);

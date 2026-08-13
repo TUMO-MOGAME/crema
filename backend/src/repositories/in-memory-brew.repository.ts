@@ -3,7 +3,10 @@ import {
   BREW_METHOD_SLUGS,
   BREW_PAGE,
   EMPTY_BREW_STATS,
+  flavorTagLabel,
+  flavorTagOrder,
   type Brew,
+  type BrewFlavorTag,
   type BrewMethodSlug,
   type BrewMethodStats,
   type BrewPage,
@@ -15,8 +18,10 @@ import { randomUUID } from 'node:crypto';
 import {
   roundTo,
   toIsoInstant,
+  toStoredConfidence,
   toStoredGrams,
   toStoredRatio,
+  type AiFlavorTagInput,
   type BrewFilter,
   type BrewRepository,
 } from './brew.repository.js';
@@ -37,6 +42,9 @@ import {
 export class InMemoryBrewRepository implements BrewRepository {
   /** Keyed by id. Holds deleted brews too — they are hidden, not removed. */
   private readonly brews = new Map<string, StoredBrew>();
+
+  /** Flavour tags by brew id — the `brew_flavor_tags` join, as a map. */
+  private readonly tags = new Map<string, BrewFlavorTag[]>();
 
   constructor(seed: readonly CreateBrewInput[] = []) {
     for (const input of seed) this.insert(input);
@@ -134,6 +142,40 @@ export class InMemoryBrewRepository implements BrewRepository {
       lastBrewedAt: new Date(Math.max(...brewedAt)).toISOString(),
       byMethod,
     });
+  }
+
+  replaceAiFlavorTags(brewId: string, tags: AiFlavorTagInput[]): Promise<BrewFlavorTag[] | null> {
+    if (!this.live(brewId)) return Promise.resolve(null);
+
+    // Human tags survive every re-extraction, and a slug a person already
+    // chose is theirs — the model's opinion of the same tag is dropped, which
+    // is what the (brew, tag) primary key would force Postgres to decide too.
+    const human = (this.tags.get(brewId) ?? []).filter((tag) => tag.source === 'human');
+    const taken = new Set(human.map((tag) => tag.slug));
+
+    const derived: BrewFlavorTag[] = tags
+      .filter((tag) => !taken.has(tag.slug))
+      .map((tag) => ({
+        slug: tag.slug,
+        label: flavorTagLabel(tag.slug),
+        source: 'ai',
+        confidence: toStoredConfidence(tag.confidence),
+      }));
+
+    const next = [...human, ...derived].sort(
+      (a, b) => flavorTagOrder(a.slug) - flavorTagOrder(b.slug),
+    );
+
+    this.tags.set(brewId, next);
+    return Promise.resolve(next.map((tag) => ({ ...tag })));
+  }
+
+  flavorTagsFor(brewId: string): Promise<BrewFlavorTag[] | null> {
+    if (!this.live(brewId)) return Promise.resolve(null);
+
+    // Copies, for the same reason `toBrew` copies: the store's own entries
+    // must not be mutable through a response.
+    return Promise.resolve((this.tags.get(brewId) ?? []).map((tag) => ({ ...tag })));
   }
 
   private insert(input: CreateBrewInput): StoredBrew {

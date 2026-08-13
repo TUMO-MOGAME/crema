@@ -15,6 +15,7 @@ import { CONTROL_CLASS, Field } from '../../components/field';
 import { QuickLogPanel } from '../coach/quick-log-panel';
 import { useAiEnabled } from '../coach/use-ai';
 import { ApiError } from '../../lib/api-client';
+import { useFlavorTags } from './use-brews';
 
 /**
  * Add and edit, as wireframe 2 draws them — one component, because the two
@@ -84,6 +85,10 @@ export function BrewFormDialog({
   });
 
   const aiEnabled = useAiEnabled();
+
+  // Edit only — a brew being created has no tags yet, and the extraction that
+  // makes them runs after the save this dialog ends with.
+  const flavorTags = useFlavorTags(brew?.id);
 
   const applyProposal = (next: BrewProposal) => {
     // Merge over what is already typed, but never carry a previous proposal's
@@ -277,6 +282,31 @@ export function BrewFormDialog({
             />
           )}
         </Field>
+
+        {/*
+          What the notes read as, in the controlled vocabulary — shown on edit
+          because that is where the notes are being reconsidered. Read-only:
+          the tags are derived from the text above them, and editing the text
+          is how you change them.
+        */}
+        {brew && flavorTags.data && flavorTags.data.length > 0 && (
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            <span className="text-small text-ink-muted font-medium">Flavour</span>
+            <ul aria-label="Flavour tags" className="contents">
+              {flavorTags.data.map((tag) => (
+                <li
+                  key={tag.slug}
+                  className="bg-sunken text-ink rounded-pill px-2 py-px text-micro"
+                >
+                  {tag.label}
+                </li>
+              ))}
+            </ul>
+            {flavorTags.data.some((tag) => tag.source === 'ai') && (
+              <span className="text-micro text-ink-muted">tagged by AI</span>
+            )}
+          </div>
+        )}
 
         {/*
           The one proposed field with no control of its own. Saying it here is

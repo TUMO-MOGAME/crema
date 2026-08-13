@@ -16,6 +16,7 @@ import { createHealthRoutes } from './routes/health.js';
 import { createStatsRoutes } from './routes/stats.js';
 import { BrewService } from './services/brew.service.js';
 import { CoachService } from './services/coach.service.js';
+import { FlavorTagService } from './services/flavor-tag.service.js';
 import { QuickLogService } from './services/quick-log.service.js';
 import type { AppEnv } from './types.js';
 
@@ -156,12 +157,13 @@ export function createApp(
   const ai = 'ai' in dependencies ? (dependencies.ai ?? null) : createAiProvider();
   const quickLog = new QuickLogService(ai);
   const coach = new CoachService(ai, dependencies.brews);
+  const flavorTags = new FlavorTagService(ai, dependencies.brews);
 
   app.route('/api', createHealthRoutes(quickLog));
   app.route('/api', brewMethodRoutes);
   app.route('/api', createBrewRoutes(brews));
   app.route('/api', createStatsRoutes(brews));
-  app.route('/api', createAiRoutes(quickLog, coach));
+  app.route('/api', createAiRoutes(quickLog, coach, flavorTags));
 
   app.notFound(notFoundHandler);
   app.onError(errorHandler);

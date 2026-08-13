@@ -1,9 +1,14 @@
-import { coachRequestSchema, quickLogRequestSchema } from '@crema/shared';
+import {
+  coachRequestSchema,
+  extractFlavorTagsRequestSchema,
+  quickLogRequestSchema,
+} from '@crema/shared';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { AppError } from '../lib/app-error.js';
 import { jsonBody, parseOrThrow } from '../lib/validation.js';
 import type { CoachService } from '../services/coach.service.js';
+import type { FlavorTagService } from '../services/flavor-tag.service.js';
 import type { QuickLogService } from '../services/quick-log.service.js';
 import type { AppEnv } from '../types.js';
 
@@ -17,6 +22,8 @@ import type { AppEnv } from '../types.js';
  * | POST   | /api/ai/coach       | 200, streamed | 400 shape, 413, 429, 503 —        |
  * |        |                     |               | mid-stream failure is an `error`  |
  * |        |                     |               | event, because the 200 is gone    |
+ * | POST   | /api/ai/flavor-tags | 200 (tags)    | 400 shape, 404 no such brew,      |
+ * |        |                     |               | 429, 503 not configured           |
  *
  * Quick Log answers 200 rather than 201, and the distinction is the whole
  * design position: nothing was created. What comes back is a proposal for a
@@ -29,8 +36,26 @@ import type { AppEnv } from '../types.js';
  * somebody will eventually forget to extend. Here a request costs a model call;
  * everywhere else it costs a map lookup.
  */
-export function createAiRoutes(quickLog: QuickLogService, coach: CoachService): Hono<AppEnv> {
+export function createAiRoutes(
+  quickLog: QuickLogService,
+  coach: CoachService,
+  flavorTags: FlavorTagService,
+): Hono<AppEnv> {
   return new Hono<AppEnv>()
+    .post('/ai/flavor-tags', async (c) => {
+      // The body names a brew, not notes: the service reads the saved text
+      // itself, so what gets tagged is what the log holds. Asked for by the
+      // client after a save rather than run during one, so the model's
+      // latency lands here, on a request nobody is waiting on.
+      const { brewId } = parseOrThrow(extractFlavorTagsRequestSchema, await jsonBody(c));
+
+      return c.json(
+        await flavorTags.extract(brewId, {
+          requestId: c.get('requestId'),
+          signal: c.req.raw.signal,
+        }),
+      );
+    })
     .post('/ai/quick-log', async (c) => {
       // The 500-character cap lives in the shared schema, so the browser stops a
       // long paste before it is sent and the API refuses it if it arrives anyway.

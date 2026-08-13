@@ -2,6 +2,7 @@ import {
   BREW_METHODS,
   BREW_PAGE,
   type Brew,
+  type BrewFlavorTag,
   type BrewProposal,
   type CoachEvent,
 } from '@crema/shared';
@@ -63,6 +64,8 @@ interface StubOptions {
     proposal?: BrewProposal;
     /** What `POST /api/ai/coach` streams, formatted as SSE by the stub. */
     coach?: CoachEvent[];
+    /** What extraction stores and `GET /api/brews/:id/flavor-tags` serves. */
+    flavorTags?: BrewFlavorTag[];
     /** A failure instead: the status and the message the API would send. */
     status?: number;
     message?: string;
@@ -147,6 +150,10 @@ export function stubApi({
         );
       }
 
+      if (url.includes('/api/ai/flavor-tags')) {
+        return json(ai.flavorTags ?? []);
+      }
+
       if (url.includes('/api/ai/coach')) {
         // Encoded the way the API encodes it, so the client's SSE parsing is
         // what these tests exercise rather than a shortcut around it.
@@ -168,6 +175,10 @@ export function stubApi({
     }
 
     if (url.includes('/api/brews')) {
+      if (url.includes('/flavor-tags')) {
+        return json(ai?.flavorTags ?? []);
+      }
+
       if (method === 'GET') {
         if (listStatus !== 200) {
           return json(

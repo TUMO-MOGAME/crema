@@ -22,16 +22,16 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 3     | API — Hono, services, in-memory repository    | **done**    | 100%     |
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
-| 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 90%      |
+| 6     | AI — Quick Log, Coach agent, guardrails       | **done**    | 100%     |
 | 7     | Ship — Vercel, docs, demo                     | in progress | 70%      |
 
-**Overall: planning and phases 0 through 5 are complete, and both remaining
-phases are under way.** 524 unit tests, 99 database tests, 15 provider tests and
+**Overall: planning and phases 0 through 6 are complete; what remains is Phase
+7's closing sweep.** 559 unit tests, 106 database tests, 20 provider tests and
 16 end-to-end journeys passing, `main` protected and green. **The app is live**
-— serving from Supabase behind a single public origin with both AI surfaces
+— serving from Supabase behind a single public origin with all three AI surfaces
 enabled, verified end to end, and the URL recorded in
-[deployment.md](./deployment.md). What remains is the flavour tag extraction,
-the explicit no-key pass, and the final documentation sweep.
+[deployment.md](./deployment.md). What remains is documentation: the README
+pass, screenshots, the demo, and ticking the acceptance criteria.
 
 ---
 
@@ -156,9 +156,9 @@ the same commit.
 | Check                      | Result                                                           |
 | -------------------------- | ---------------------------------------------------------------- |
 | `npm run verify`           | green — format, lint, typecheck, test                            |
-| Unit and integration tests | 524 passing (78 shared, 281 backend, 165 web)                    |
-| Database tests             | 99 passing against Supabase, and against Postgres 17 unseeded    |
-| AI provider tests          | 15 passing against Gemini, run separately by `npm run test:ai`   |
+| Unit and integration tests | 559 passing (87 shared, 301 backend, 171 web)                    |
+| Database tests             | 106 passing against Supabase, and against Postgres 17 unseeded   |
+| AI provider tests          | 20 passing against Gemini, run separately by `npm run test:ai`   |
 | End-to-end journeys        | 16 passing against production builds                             |
 | Coverage                   | shared 100%, backend 99% lines / 85% branches, web 96.6% / 88.2% |
 | Bundle                     | 115 kB js and 5 kB css gzipped, against a 250 / 40 kB budget     |
@@ -201,11 +201,10 @@ does not mask anything.
 
 ## Next
 
-Phase 6 — what remains is the flavour tag extraction into `brew_flavor_tags` and
-the explicit no-key verification pass. Then Phase 7 closes the project out: live
-URLs into deployment.md once the deployment's environment variables land, the
-README and Documentation.md pass, screenshots, the demo recording, and ticking
-every acceptance criterion in PLANNING section 9.
+Phase 7's closing sweep, which is documentation rather than code: the README and
+Documentation.md pass, screenshots, the demo recording, and ticking every
+acceptance criterion in PLANNING section 9. Phase 6 is complete — all three AI
+surfaces from the plan are built, guarded, and verified against the real model.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -467,10 +466,14 @@ control that opened it.
       rendered as they arrive
 - [x] Visible tool-call trace — every tool call listed as a readable line,
       collapsible once the answer is in
-- [ ] Flavour tag extraction into `brew_flavor_tags`
+- [x] Flavour tag extraction into `brew_flavor_tags` — asked for by the client
+      after a save, stored with `source: 'ai'` and confidence, shown on edit
 - [x] Rate limiting, timeouts, input caps — the 10-a-minute `/api/ai/*` budget,
       bounded calls in both providers, capped inputs in the shared schemas
-- [ ] Verified: full app works with `GEMINI_API_KEY` unset
+- [x] Verified: full app works with `GEMINI_API_KEY` unset — the sixteen
+      end-to-end journeys run against production builds with no key, the route
+      suite asserts every AI endpoint's 503, and the frontend suites assert the
+      AI surfaces stay unrendered when health says none
 - [x] Token usage logged and surfaced — logged per call on both surfaces, and
       the coach's answer says what it cost on screen
 
@@ -566,3 +569,4 @@ revision and what it removed.
 | 2026-08-13 | The Brew Coach agent, behind the seam that waited for it. `POST /api/ai/coach` answers one question about the log as a stream of server-sent events — text as it is generated, a readable trace line for every tool call, any proposal the agent makes, and a final accounting of tokens and tool calls — with the event vocabulary in `@crema/shared`, parsed by the backend's tests and soon the frontend from one schema. The agent holds four tools: three read-only over the same repository the routes use, and `proposeBrew`, which the provider owns and pushes through the same normalisation Quick Log uses, so a candidate a form would refuse cannot reach one. The 503 for a keyless deployment lands before the stream opens and is a real status code; a failure mid-answer becomes the stream's last event, in our words, because model errors can quote their input. The fake answers the same questions from the same tools deterministically, which is what lets the route suite run the whole loop keyless — and the contract grew five coach cases that the real model then passed unchanged on the first run. 519 unit tests, 15 against Gemini.                                                                                                                                                                                                                   |
 | 2026-08-13 | The coach reaches the screen, which completes the surface. A Coach button sits beside Add — only when health says there is an AI — and opens a panel that asks one question and renders the answer as it streams. The trace is the deliberate part: every tool call arrives as a readable line and is listed where the reader can see it, collapsible once the answer is in, with the token cost printed beside the answer's provenance because cost visibility is a stated guardrail rather than a debug detail. A proposal renders as a card whose one action opens the Add form pre-filled and marked, through the same seam Quick Log fills it — the form's starting values and its mid-session merges are deliberately two different channels, so the coach's hand-off can never clobber a half-typed brew and Quick Log's merge can never restart one. The stream is read by hand because EventSource cannot POST, and every event is parsed against the shared schema at the seam; the test stub answers with real SSE bytes so the parsing is what the suite exercises. 524 unit tests.                                                                                                                                                                                                                                                                                          |
 | 2026-08-13 | Live, and the brief's last requirement closed. The deployment protection toggle came off and every request answered 500 — a successful build with an instant runtime crash, which is the env loader's signature. The project's variables dated from 2026-08-10, when the plan still said `DATA_SOURCE=memory` for v1: production plus the in-memory store is the one configuration the loader refuses on purpose, and it fired three days after it was written at the first person it was written for. The value edited to `postgres`, the stale `VITE_API_BASE_URL` and `CORS_ORIGIN` from the two-project plan deleted before the first could point the built bundle at a retired domain, and the redeploy verified end to end: health reporting postgres with AI enabled, the log served from Supabase, deep links surviving a hard refresh, and a sentence read through real Gemini into a validated proposal. The live URLs are in deployment.md, which was the one graded item still open.                                                                                                                                                                                                                                                                                                                                                                                         |
+| 2026-08-13 | Flavour tags close Phase 6. Tasting notes normalise into the fourteen SCA categories the migration has seeded since Phase 2 — the join table finally earns its keep. The client asks for extraction after a save succeeds, in its own request, so the model's latency can never make saving feel slow, and a failed extraction loses tags, never brews. Tags land with `source: 'ai'` and a two-decimal confidence; a re-extraction replaces the model's previous opinion but never a human's, which the (brew, tag) primary key enforces in Postgres and the in-memory adapter mirrors deliberately. The repository contract grew seven tag cases and the provider contract five — all passing against real Supabase (106 database tests) and real Gemini (20 provider tests) before merging. Editing a brew shows what its notes read as, labelled "tagged by AI", read-only: the tags derive from the text above them, and editing the text is how you change them. 559 unit tests. Phase 6 done.                                                                                                                                                                                                                                                                                                                                                                                     |

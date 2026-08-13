@@ -96,6 +96,15 @@ export function useBrewMethods() {
   });
 }
 
+/** The flavour tags on one brew — fetched only while an edit dialog shows it. */
+export function useFlavorTags(brewId: string | undefined) {
+  return useQuery({
+    queryKey: brewKeys.flavorTags(brewId ?? 'none'),
+    queryFn: () => brewsApi.flavorTags(brewId ?? ''),
+    enabled: brewId !== undefined,
+  });
+}
+
 /**
  * The three callbacks every optimistic mutation here needs, given the one thing
  * that differs between them: what to do to the cache.

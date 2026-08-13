@@ -4,8 +4,10 @@ import {
   brewProposalSchema,
   coachToolNameSchema,
   createBrewSchema,
+  FLAVOR_TAG_SLUGS,
   type BrewField,
   type BrewProposal,
+  type FlavorTagSlug,
 } from '@crema/shared';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject, NoObjectGeneratedError, stepCountIs, streamText, tool } from 'ai';
@@ -17,6 +19,8 @@ import type {
   BrewProposalResult,
   CoachAnswerEvent,
   CoachTools,
+  ExtractedFlavorTag,
+  FlavorTagExtraction,
 } from './ai-provider.js';
 
 /**
@@ -98,6 +102,13 @@ Rules:
 - inferred lists the fields you filled in from indirect evidence rather than an outright statement. "18g" states the dose; a bean name taken from a capitalised word is inferred; "pour over" read as v60 is inferred. Only name fields you actually returned.
 - A sentence that describes no brew returns an empty object. That is a correct answer, not a failure.`;
 
+const FLAVOR_SYSTEM = `You read the tasting notes of one coffee brew and name the flavour categories they support, from a closed vocabulary.
+
+Rules:
+- Only name a category the notes actually support. "Blackcurrant" supports berry; it does not support chocolate. Notes that describe no recognisable flavour — "fine I guess" — get an empty list, which is a correct answer.
+- confidence is 0 to 1: how directly the notes state the category. A category named outright scores high; one implied by a related word scores lower.
+- Never invent flavours to be helpful. An empty list beats a guess, because these tags become filters over the person's own log.`;
+
 const COACH_SYSTEM = `You are the brew coach inside Crema, a personal coffee brew log. You answer questions about the user's own log, and nothing else.
 
 Rules:
@@ -151,6 +162,64 @@ export class GeminiAiProvider implements AiProvider {
 
     return {
       proposal: normaliseProposal(fields, claimed),
+      usage: {
+        inputTokens: answer.usage.inputTokens ?? 0,
+        outputTokens: answer.usage.outputTokens ?? 0,
+      },
+    };
+  }
+
+  /**
+   * Flavour tagging: the same single-call shape as Quick Log, with a closed
+   * vocabulary instead of a brew schema. The enum in the requested shape is
+   * what makes an out-of-vocabulary tag unrepresentable rather than filtered;
+   * the clamp and the dedupe below defend the two properties an enum cannot.
+   */
+  async extractFlavorTags(
+    tastingNotes: string,
+    options: AiCallOptions = {},
+  ): Promise<FlavorTagExtraction> {
+    options.signal?.throwIfAborted();
+
+    const timeout = AbortSignal.timeout(TIMEOUT_MS);
+    const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+
+    let answer;
+    try {
+      answer = await generateObject({
+        model: this.#model,
+        schema: z.object({
+          tags: z.array(
+            z.object({
+              slug: z.enum(FLAVOR_TAG_SLUGS as [FlavorTagSlug, ...FlavorTagSlug[]]),
+              confidence: z.number(),
+            }),
+          ),
+        }),
+        system: FLAVOR_SYSTEM,
+        prompt: tastingNotes,
+        abortSignal: signal,
+        providerOptions: { google: { thinkingConfig: { thinkingLevel: 'low' } } },
+      });
+    } catch (error) {
+      if (NoObjectGeneratedError.isInstance(error)) throw AppError.aiParseFailed();
+      throw error;
+    }
+
+    // One entry per tag, keeping the model's strongest claim, confidence held
+    // to [0, 1] — a 1.2 from an enthusiastic model is a 1, not an error the
+    // user sees for notes they wrote in good faith.
+    const strongest = new Map<FlavorTagSlug, ExtractedFlavorTag>();
+    for (const tag of answer.object.tags) {
+      const confidence = Math.min(1, Math.max(0, tag.confidence));
+      const existing = strongest.get(tag.slug);
+      if (!existing || existing.confidence < confidence) {
+        strongest.set(tag.slug, { slug: tag.slug, confidence });
+      }
+    }
+
+    return {
+      tags: [...strongest.values()],
       usage: {
         inputTokens: answer.usage.inputTokens ?? 0,
         outputTokens: answer.usage.outputTokens ?? 0,

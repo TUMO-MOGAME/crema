@@ -1,6 +1,7 @@
 import {
   BREW_PAGE,
   type Brew,
+  type BrewFlavorTag,
   type BrewPage,
   type BrewQuery,
   type BrewStats,
@@ -49,6 +50,13 @@ export class BrewService {
     if (!brew) throw AppError.notFound('Brew', id);
 
     return brew;
+  }
+
+  async flavorTags(id: string): Promise<BrewFlavorTag[]> {
+    const tags = await this.repository.flavorTagsFor(id);
+    if (tags === null) throw AppError.notFound('Brew', id);
+
+    return tags;
   }
 
   async create(input: CreateBrewInput): Promise<Brew> {

@@ -214,6 +214,13 @@ const PAIRINGS: {
     background: '--ui-raised',
     minimum: NON_TEXT,
   },
+  // The flavour tag chips: micro text on the sunken fill.
+  {
+    what: 'a flavour tag label on its sunken chip',
+    foreground: '--ui-ink',
+    background: '--ui-sunken',
+    minimum: NORMAL_TEXT,
+  },
 ];
 
 describe.each(['dark', 'light'] as const)('the %s theme', (scope) => {

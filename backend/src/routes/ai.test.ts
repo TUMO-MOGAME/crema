@@ -1,5 +1,6 @@
 import {
   AI_LIMITS,
+  brewFlavorTagListSchema,
   brewPageSchema,
   brewProposalSchema,
   coachEventSchema,
@@ -44,6 +45,7 @@ const unreadable: AiProvider = {
   coach: () => {
     throw AppError.aiParseFailed();
   },
+  extractFlavorTags: () => Promise.reject(AppError.aiParseFailed()),
 };
 
 /** A provider that gets one sentence out and then dies mid-answer. */
@@ -55,6 +57,7 @@ const midStreamFailure: AiProvider = {
     yield { type: 'text', delta: 'Your best brews ' } as const;
     throw new Error('socket closed: the model quoted "18g of the Ethiopian" back');
   },
+  extractFlavorTags: () => Promise.reject(AppError.aiParseFailed()),
 };
 
 function postCoach(app: ReturnType<typeof createApp>, body: unknown) {
@@ -310,6 +313,91 @@ describe('POST /api/ai/coach', () => {
     }
 
     expect(responses.some((response) => response.status === 429)).toBe(true);
+  });
+});
+
+describe('POST /api/ai/flavor-tags', () => {
+  /** The app with one brew already in it, so the tests can name a real id. */
+  async function appWithABrew() {
+    const repository = new InMemoryBrewRepository([
+      {
+        beans: 'Ethiopian Yirgacheffe',
+        method: 'v60',
+        coffeeGrams: 18,
+        waterGrams: 288,
+        rating: 5,
+        tastingNotes: 'Blackcurrant, jasmine, tea-like and clean',
+      },
+    ]);
+    const built = createApp({ brews: repository, ai: new FakeAiProvider() });
+    const page = brewPageSchema.parse(await (await built.request('/api/brews')).json());
+    const id = page.brews[0]?.id;
+    if (!id) throw new Error('The seeded brew has no id.');
+
+    return { app: built, id };
+  }
+
+  function postTags(target: ReturnType<typeof createApp>, body: unknown) {
+    return target.request('/api/ai/flavor-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('reads the saved notes and stores tags with AI provenance', async () => {
+    const { app: target, id } = await appWithABrew();
+
+    const response = await postTags(target, { brewId: id });
+    const tags = brewFlavorTagListSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    // Blackcurrant is a berry and jasmine is a flower; both carry provenance.
+    expect(tags.map((tag) => tag.slug)).toContain('berry');
+    expect(tags.map((tag) => tag.slug)).toContain('floral');
+    expect(tags.every((tag) => tag.source === 'ai')).toBe(true);
+    expect(tags.every((tag) => tag.confidence !== null)).toBe(true);
+  });
+
+  it('serves the stored tags back from the brew route', async () => {
+    const { app: target, id } = await appWithABrew();
+    await postTags(target, { brewId: id });
+
+    const response = await target.request(`/api/brews/${id}/flavor-tags`);
+    const tags = brewFlavorTagListSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(tags.length).toBeGreaterThan(0);
+  });
+
+  it('answers 404 for a brew that does not exist', async () => {
+    const { app: target } = await appWithABrew();
+
+    const response = await postTags(target, {
+      brewId: '11111111-1111-4111-8111-000000000099',
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it('answers 400 for a body that names no brew', async () => {
+    const { app: target } = await appWithABrew();
+
+    expect((await postTags(target, {})).status).toBe(400);
+    expect((await postTags(target, { brewId: 'not-a-uuid' })).status).toBe(400);
+  });
+
+  it('answers 503 when the deployment has no key, and loses no brews doing it', async () => {
+    const noAi = appWith(null);
+
+    const response = await noAi.request('/api/ai/flavor-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brewId: '11111111-1111-4111-8111-000000000001' }),
+    });
+
+    expect(response.status).toBe(503);
+    expect((await noAi.request('/api/brews')).status).toBe(200);
   });
 });
 
