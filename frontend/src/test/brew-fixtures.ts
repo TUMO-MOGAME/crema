@@ -1,4 +1,4 @@
-import { BREW_METHODS, BREW_PAGE, type Brew } from '@crema/shared';
+import { BREW_METHODS, BREW_PAGE, type Brew, type BrewProposal } from '@crema/shared';
 import { vi } from 'vitest';
 
 /** `fetch` takes three shapes of first argument; only one is already a string. */
@@ -48,6 +48,19 @@ interface StubOptions {
   listStatus?: number;
 
   /**
+   * The AI surfaces. Absent means a deployment with no key — health reports
+   * the AI disabled, which is what most tests want: the quick-log panel stays
+   * out of the way of everything that is not about it.
+   */
+  ai?: {
+    /** What `POST /api/ai/quick-log` answers. */
+    proposal?: BrewProposal;
+    /** A failure instead: the status and the message the API would send. */
+    status?: number;
+    message?: string;
+  };
+
+  /**
    * Holds every write open until `releaseWrites()` is called.
    *
    * Optimistic updates are only observable in the window between the request
@@ -73,6 +86,7 @@ export function stubApi({
   writeBody,
   listStatus = 200,
   holdWrites = false,
+  ai,
 }: StubOptions = {}) {
   const calls: { url: string; method: string; body: unknown }[] = [];
 
@@ -99,6 +113,34 @@ export function stubApi({
       );
 
     if (url.includes('/api/brew-methods')) return json(BREW_METHODS);
+
+    if (url.includes('/api/health')) {
+      return json({ status: 'ok', ai: { enabled: ai !== undefined } });
+    }
+
+    if (url.includes('/api/ai/quick-log')) {
+      if (!ai) {
+        return json(
+          { error: { code: 'AI_UNAVAILABLE', message: 'AI is not configured.', requestId: 'r1' } },
+          503,
+        );
+      }
+
+      if (ai.status) {
+        return json(
+          {
+            error: {
+              code: 'RATE_LIMITED',
+              message: ai.message ?? 'Too many requests. Try again in a minute.',
+              requestId: 'r1',
+            },
+          },
+          ai.status,
+        );
+      }
+
+      return json(ai.proposal ?? { brew: {}, inferred: [] });
+    }
 
     if (url.includes('/api/brews')) {
       if (method === 'GET') {

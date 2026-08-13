@@ -200,6 +200,20 @@ const PAIRINGS: {
     background: '--ui-surface',
     minimum: NON_TEXT,
   },
+  // The quick-log "inferred" chip is micro text on the accent fill.
+  {
+    what: 'the inferred chip label on its fill',
+    foreground: '--ui-accent-ink',
+    background: '--ui-accent',
+    minimum: NORMAL_TEXT,
+  },
+  // The accent border marking an inferred control, drawn inside the dialog.
+  {
+    what: 'an inferred control edge against a dialog',
+    foreground: '--ui-accent',
+    background: '--ui-raised',
+    minimum: NON_TEXT,
+  },
 ];
 
 describe.each(['dark', 'light'] as const)('the %s theme', (scope) => {

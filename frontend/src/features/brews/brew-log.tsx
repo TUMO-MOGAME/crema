@@ -1,4 +1,4 @@
-import type { Brew, BrewMethodSlug, CreateBrewInput } from '@crema/shared';
+import type { Brew, BrewMethodSlug, BrewProposal, CreateBrewInput } from '@crema/shared';
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { OfflineBanner } from '../../components/offline-banner';
@@ -25,6 +25,15 @@ export function BrewLog() {
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<Brew | null>(null);
 
+  /**
+   * The quick-log proposal the form is currently showing, if any. It lives
+   * here rather than in the dialog because its lifetime is the dialog
+   * *session*, and the sessions begin and end in these handlers: opening the
+   * form for anything starts clean, so one sentence's guesses can never mark
+   * another brew's fields.
+   */
+  const [proposal, setProposal] = useState<BrewProposal | null>(null);
+
   const brews = useBrews(method || undefined);
   const methods = useBrewMethods();
   const toast = useToast();
@@ -44,9 +53,20 @@ export function BrewLog() {
 
   const dialogOpen = adding || editing !== null;
 
+  const openAdd = () => {
+    setProposal(null);
+    setAdding(true);
+  };
+
+  const openEdit = (brew: Brew) => {
+    setProposal(null);
+    setEditing(brew);
+  };
+
   const closeForm = () => {
     setAdding(false);
     setEditing(null);
+    setProposal(null);
     create.reset();
     update.reset();
   };
@@ -112,7 +132,7 @@ export function BrewLog() {
           Brew log
         </h1>
 
-        <Button onClick={() => setAdding(true)}>Add</Button>
+        <Button onClick={openAdd}>Add</Button>
       </header>
 
       <OfflineBanner />
@@ -146,7 +166,7 @@ export function BrewLog() {
             <>
               <ul className="border-hairline border-t">
                 {brews.brews.map((brew, index) => (
-                  <BrewRow key={brew.id} brew={brew} index={index} onEdit={setEditing} />
+                  <BrewRow key={brew.id} brew={brew} index={index} onEdit={openEdit} />
                 ))}
               </ul>
 
@@ -179,6 +199,8 @@ export function BrewLog() {
         onDelete={editing ? () => setDeleting(editing) : undefined}
         pending={create.isPending || update.isPending}
         error={create.error ?? update.error}
+        proposal={proposal}
+        onProposal={setProposal}
       />
 
       <DeleteConfirmDialog
