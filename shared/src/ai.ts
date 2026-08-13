@@ -24,6 +24,9 @@ export const AI_LIMITS = {
    * dictate about one cup of coffee.
    */
   quickLogMaxLength: 500,
+
+  /** The longest question the coach will take, for the same reasons. */
+  coachQuestionMaxLength: 500,
 } as const;
 
 /**
@@ -111,3 +114,77 @@ export type BrewProposal = z.infer<typeof brewProposalSchema>;
 
 /** A proposal that determined nothing — a valid answer, not a failure. */
 export const EMPTY_BREW_PROPOSAL: BrewProposal = { brew: {}, inferred: [] };
+
+/* -------------------------------------------------------------------------
+ * The Brew Coach
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The tools the coach may reach for, named here because the trace panel labels
+ * them for the reader. All four are read-only over the caller's own log —
+ * `proposeBrew` *emits a candidate* for the user to confirm in the Add form,
+ * exactly as Quick Log does, and writes nothing.
+ */
+export const COACH_TOOLS = [
+  'listBrews',
+  'getBrewStats',
+  'findSimilarBrews',
+  'proposeBrew',
+] as const;
+
+export type CoachToolName = (typeof COACH_TOOLS)[number];
+
+export const coachToolNameSchema = z.enum(COACH_TOOLS);
+
+/** `POST /api/ai/coach` body. */
+export const coachRequestSchema = z
+  .object({
+    question: z
+      .string()
+      .trim()
+      .min(1, { message: 'Ask the coach something' })
+      .max(AI_LIMITS.coachQuestionMaxLength, {
+        message: `Keep it under ${AI_LIMITS.coachQuestionMaxLength} characters`,
+      }),
+  })
+  .strict();
+
+export type CoachRequest = z.infer<typeof coachRequestSchema>;
+
+/**
+ * One event on the coach's answer stream.
+ *
+ * The answer arrives as server-sent events, and this union is the whole
+ * vocabulary: text as it is generated, a line for each tool the agent used, a
+ * brew candidate when it proposes one, what the call cost when it is done, and
+ * the failure when there is one. Shared because the stream is a contract like
+ * any response body — the backend writes events this schema accepts and the
+ * frontend refuses anything else, so the two cannot drift apart quietly.
+ *
+ * `tool-call` carries a human-readable summary rather than the raw arguments
+ * and rows. The trace exists so a reader can see what the agent looked at —
+ * "12 V60 brews, newest first" says that; a JSON blob of UUIDs says less with
+ * more. The full data went to the model, not to the reader.
+ */
+export const coachEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), delta: z.string() }).strict(),
+  z
+    .object({ type: z.literal('tool-call'), tool: coachToolNameSchema, summary: z.string() })
+    .strict(),
+  z.object({ type: z.literal('proposal'), proposal: brewProposalSchema }).strict(),
+  z
+    .object({
+      type: z.literal('done'),
+      usage: z
+        .object({
+          inputTokens: z.number().int().nonnegative(),
+          outputTokens: z.number().int().nonnegative(),
+        })
+        .strict(),
+      toolCalls: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z.object({ type: z.literal('error'), code: z.string(), message: z.string() }).strict(),
+]);
+
+export type CoachEvent = z.infer<typeof coachEventSchema>;

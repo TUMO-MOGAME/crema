@@ -50,4 +50,14 @@ export function createAiProvider(config: Env = env): AiProvider | null {
  * Test files import the fake and the contract from their own modules directly,
  * which is what the repository tests already do.
  */
-export type { AiCallOptions, AiProvider, AiUsage, BrewProposalResult } from './ai-provider.js';
+export type {
+  AiCallOptions,
+  AiProvider,
+  AiUsage,
+  BrewProposalResult,
+  CoachAnswerEvent,
+  CoachBrew,
+  CoachToolResult,
+  CoachTools,
+  ListBrewsToolArgs,
+} from './ai-provider.js';

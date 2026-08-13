@@ -22,11 +22,11 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 3     | API — Hono, services, in-memory repository    | **done**    | 100%     |
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
-| 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 55%      |
+| 6     | AI — Quick Log, Coach agent, guardrails       | in progress | 75%      |
 | 7     | Ship — Vercel, docs, demo                     | in progress | 40%      |
 
 **Overall: planning and phases 0 through 5 are complete, and both remaining
-phases are under way.** 500 unit tests, 99 database tests, 10 provider tests and
+phases are under way.** 519 unit tests, 99 database tests, 15 provider tests and
 16 end-to-end journeys passing, `main` protected and green. Supabase is
 connected and the app is deployed: the third production deploy built green after
 the two failures the deployment log records. What remains is making the URL
@@ -154,9 +154,9 @@ the same commit.
 | Check                      | Result                                                           |
 | -------------------------- | ---------------------------------------------------------------- |
 | `npm run verify`           | green — format, lint, typecheck, test                            |
-| Unit and integration tests | 500 passing (71 shared, 269 backend, 160 web)                    |
+| Unit and integration tests | 519 passing (78 shared, 281 backend, 160 web)                    |
 | Database tests             | 99 passing against Supabase, and against Postgres 17 unseeded    |
-| AI provider tests          | 10 passing against Gemini, run separately by `npm run test:ai`   |
+| AI provider tests          | 15 passing against Gemini, run separately by `npm run test:ai`   |
 | End-to-end journeys        | 16 passing against production builds                             |
 | Coverage                   | shared 100%, backend 99% lines / 85% branches, web 96.6% / 88.2% |
 | Bundle                     | 115 kB js and 5 kB css gzipped, against a 250 / 40 kB budget     |
@@ -202,12 +202,13 @@ does not mask anything.
 
 ## Next
 
-Phase 6 — the Brew Coach. Quick Log is now complete end to end, so what remains
-is the agent: the four read-only tools over the log, streamed answers, the
-visible tool-call trace, and the flavour tag extraction into `brew_flavor_tags`.
-It degrades to a clean 503 without a key, which the health endpoint already
-reports, the API already returns, and the frontend now already respects — the AI
-surfaces render only when health says there is an AI to talk to.
+Phase 6 — the coach's frontend. The agent itself is live behind
+`POST /api/ai/coach`: four read-only tools over the log, answers streamed as
+server-sent events, proposals through the same schema Quick Log confirms
+through, and the real model passing the same contract suite as the fake. What
+remains is the panel — the question box, the streamed answer, the visible
+tool-call trace built from the summary each event already carries — and then the
+flavour tag extraction into `brew_flavor_tags`.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -463,9 +464,10 @@ control that opened it.
 - [x] Provider abstraction with a deterministic fake for tests
 - [x] Quick Log — structured output parsed by `createBrewSchema`
 - [x] Pre-filled form with inferred-field highlighting
-- [ ] Coach agent with `listBrews`, `getBrewStats`, `findSimilarBrews`,
-      `proposeBrew`
-- [ ] Streaming responses
+- [x] Coach agent with `listBrews`, `getBrewStats`, `findSimilarBrews`,
+      `proposeBrew` — served by `POST /api/ai/coach`; the panel that shows it is
+      what remains
+- [x] Streaming responses — server-sent events the shared schema validates
 - [ ] Visible tool-call trace
 - [ ] Flavour tag extraction into `brew_flavor_tags`
 - [ ] Rate limiting, timeouts, input caps
@@ -560,3 +562,4 @@ revision and what it removed.
 | 2026-08-09 | `POST /api/ai/quick-log` serves the first AI surface. A 200 rather than a 201, because nothing is created — what comes back is a candidate the user confirms in the normal Add form, and `POST /api/brews` is still the only route that writes a brew. Guardrails are the point of the endpoint as much as the extraction: a 500-character cap in the shared schema, the 16 KB body limit underneath it, a 10-per-minute budget mounted on `/api/ai/*` because a request here costs a model call rather than a map lookup, the client's disconnect handed to the provider so a user who navigates away stops paying for tokens, and a 503 with `AI_UNAVAILABLE` on a deployment with no key. Sixteen route tests cover every one of those against the fake, with no key and no bill. Two things were corrected on the way. `/api/health` was reporting `ai.enabled` from the environment while the routes used the injected provider, so an app built without one on a machine that had a key would have advertised a surface that answered 503 — it now reads the service the requests go to. And the default wiring used `dependencies.ai ?? createAiProvider()`, which would have handed a test asserting the 503 path a real provider on any machine with a key configured, passing for the wrong reason. Verified end to end against real Gemini and real Supabase. 486 unit tests. |
 | 2026-08-13 | Deployed. Five commits fixed what two failed deploys surfaced — the build importing the test runner, the frontend's headers living in a file services mode never reads, and the service entrypoint naming the file that listens rather than the file that exports the app — and the third production deploy built green. All five are merged to `main` on both remotes, the fix branch is deleted everywhere, and the plan's deployment section now describes the single-origin services setup that actually shipped rather than the two projects it proposed. One thing holds the URL back: Vercel's default deployment protection answers every request with a login redirect until it is switched off in the dashboard, which is recorded under Blocked on.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 2026-08-13 | Quick Log reaches the form, which closes the feature. A sentence box sits at the top of the Add dialog — only there, and only when `/api/health` says the deployment has an AI — and hands the sentence to `POST /api/ai/quick-log`. What comes back pre-fills the form as values to check: fields the model inferred rather than was told wear an accent chip and border, the mark is part of the control's accessible description rather than only a colour, and it comes off the moment the reader edits the field. A proposed `brewedAt` is said in a sentence above the buttons, because it is the one field with no visible control and a value that rode along silently would be exactly the surprise the confirmation step exists to prevent. Nothing reaches `POST /api/brews` until Save — the test suite asserts that directly. Fourteen new web tests, two new measured contrast pairings for the chip and its border. 500 unit tests.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2026-08-13 | The Brew Coach agent, behind the seam that waited for it. `POST /api/ai/coach` answers one question about the log as a stream of server-sent events — text as it is generated, a readable trace line for every tool call, any proposal the agent makes, and a final accounting of tokens and tool calls — with the event vocabulary in `@crema/shared`, parsed by the backend's tests and soon the frontend from one schema. The agent holds four tools: three read-only over the same repository the routes use, and `proposeBrew`, which the provider owns and pushes through the same normalisation Quick Log uses, so a candidate a form would refuse cannot reach one. The 503 for a keyless deployment lands before the stream opens and is a real status code; a failure mid-answer becomes the stream's last event, in our words, because model errors can quote their input. The fake answers the same questions from the same tools deterministically, which is what lets the route suite run the whole loop keyless — and the contract grew five coach cases that the real model then passed unchanged on the first run. 519 unit tests, 15 against Gemini.                                                                                                                                                                                                                   |

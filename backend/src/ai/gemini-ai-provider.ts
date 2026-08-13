@@ -2,14 +2,22 @@ import {
   BREW_FIELDS,
   BREW_METHOD_SLUGS,
   brewProposalSchema,
+  coachToolNameSchema,
   createBrewSchema,
   type BrewField,
+  type BrewProposal,
 } from '@crema/shared';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateObject, NoObjectGeneratedError } from 'ai';
+import { generateObject, NoObjectGeneratedError, stepCountIs, streamText, tool } from 'ai';
 import { z } from 'zod';
 import { AppError } from '../lib/app-error.js';
-import type { AiCallOptions, AiProvider, BrewProposalResult } from './ai-provider.js';
+import type {
+  AiCallOptions,
+  AiProvider,
+  BrewProposalResult,
+  CoachAnswerEvent,
+  CoachTools,
+} from './ai-provider.js';
 
 /**
  * The real provider: Gemini, through the Vercel AI SDK.
@@ -41,6 +49,19 @@ import type { AiCallOptions, AiProvider, BrewProposalResult } from './ai-provide
  * whole wait. It is a ceiling on the pathological case, not a latency target.
  */
 const TIMEOUT_MS = 30_000;
+
+/**
+ * The coach's ceiling covers a whole agent run — up to six model steps with
+ * tool calls between them — where Quick Log's covers one call. Twice the
+ * single-call ceiling, because a run that is still thinking after a minute is
+ * not going to say anything worth the bill for the wait.
+ */
+const COACH_TIMEOUT_MS = 60_000;
+
+/** Steps, not tool calls: each step is one model turn. Six is room for three
+ * tool round-trips and a final answer, which no honest question here needs
+ * more of — and a loop that cannot stop is a bill that cannot either. */
+const COACH_MAX_STEPS = 6;
 
 /**
  * What the model is asked to return.
@@ -76,6 +97,15 @@ Rules:
 - brewedAt only when the sentence carries an actual date or time. Never "now" and never today's date.
 - inferred lists the fields you filled in from indirect evidence rather than an outright statement. "18g" states the dose; a bean name taken from a capitalised word is inferred; "pour over" read as v60 is inferred. Only name fields you actually returned.
 - A sentence that describes no brew returns an empty object. That is a correct answer, not a failure.`;
+
+const COACH_SYSTEM = `You are the brew coach inside Crema, a personal coffee brew log. You answer questions about the user's own log, and nothing else.
+
+Rules:
+- Ground every claim in the log. Use the tools to read it before answering; never invent brews, numbers or trends the tools did not return. If the log cannot answer the question, say so plainly.
+- Answer with real numbers from the tools — ratios as 1:16-style figures, ratings out of 5 — and keep it short. Two or three sentences is a good answer; a report is not.
+- When the user asks what to brew or what to change, call proposeBrew with your candidate so they can confirm it in the form. The proposal is shown to them separately: refer to it, do not restate every number.
+- You only read. Nothing you do writes to the log; the user confirms any proposal themselves.
+- Questions unrelated to the user's coffee get one sentence redirecting to what you can do.`;
 
 export class GeminiAiProvider implements AiProvider {
   readonly name: string;
@@ -118,37 +148,190 @@ export class GeminiAiProvider implements AiProvider {
     }
 
     const { inferred: claimed, ...fields } = answer.object;
-    const brew: Record<string, unknown> = {};
-    const inferred: BrewField[] = [];
-
-    for (const field of BREW_FIELDS) {
-      const raw = fields[field];
-      if (raw === undefined) continue;
-
-      // The real rules, applied where a failure can become an omission. This
-      // is the contract's "omit rather than propose something invalid", and it
-      // is why the model was given the looser schema above.
-      const parsed = createBrewSchema.shape[field].safeParse(raw);
-      if (!parsed.success || parsed.data === undefined) continue;
-
-      brew[field] = parsed.data;
-      if (claimed?.includes(field)) inferred.push(field);
-    }
-
-    const result = brewProposalSchema.safeParse({ brew, inferred });
-
-    // Every field was validated on the way in and `inferred` was filtered to
-    // fields that survived, so this should not fail. It is checked because the
-    // alternative to noticing here is returning a proposal the API promised it
-    // would never return.
-    if (!result.success) throw AppError.aiParseFailed();
 
     return {
-      proposal: result.data,
+      proposal: normaliseProposal(fields, claimed),
       usage: {
         inputTokens: answer.usage.inputTokens ?? 0,
         outputTokens: answer.usage.outputTokens ?? 0,
       },
     };
   }
+
+  /**
+   * The agent loop: `streamText` with the four tools, capped at
+   * `COACH_MAX_STEPS` steps and `COACH_TIMEOUT_MS` overall.
+   *
+   * Three of the tools are pass-throughs to the `CoachTools` handed in — the
+   * adapter's job is the loop, not the log. `proposeBrew` is the adapter's
+   * own: its input is the same loose extraction shape Quick Log uses, its
+   * output goes through the same normalisation, and the resulting proposal is
+   * yielded as an event rather than woven into the text — the form is where a
+   * candidate belongs, not a paragraph.
+   *
+   * Each tool's result carries a one-line `summary`. Sending it to the model
+   * as well as the trace costs a few tokens and buys a guarantee: the trace
+   * the reader sees and the context the model reasoned over are the same
+   * account of what the tool said.
+   */
+  async *coach(
+    question: string,
+    tools: CoachTools,
+    options: AiCallOptions = {},
+  ): AsyncGenerator<CoachAnswerEvent> {
+    options.signal?.throwIfAborted();
+
+    const timeout = AbortSignal.timeout(COACH_TIMEOUT_MS);
+    const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+
+    // Filled by the proposeBrew tool and drained when its result streams past,
+    // so the proposal event lands in order with the trace line that made it.
+    const proposals: BrewProposal[] = [];
+    let toolCalls = 0;
+
+    const result = streamText({
+      model: this.#model,
+      system: COACH_SYSTEM,
+      prompt: question,
+      abortSignal: signal,
+      stopWhen: stepCountIs(COACH_MAX_STEPS),
+      tools: {
+        listBrews: tool({
+          description:
+            'Read the brew log, newest first. Optionally filter by method or minimum rating.',
+          inputSchema: z.object({
+            method: z.enum(BREW_METHOD_SLUGS).optional(),
+            minRating: z.number().int().min(1).max(5).optional(),
+            limit: z.number().int().min(1).max(50).optional(),
+          }),
+          execute: (args) => tools.listBrews(args),
+        }),
+        getBrewStats: tool({
+          description:
+            'Aggregates over the whole log: totals, average rating, and per-method rating and ratio figures.',
+          inputSchema: z.object({}),
+          execute: () => tools.getBrewStats(),
+        }),
+        findSimilarBrews: tool({
+          description: 'Brews whose beans match a name, for like-for-like comparison.',
+          inputSchema: z.object({ beans: z.string() }),
+          execute: (args) => tools.findSimilarBrews(args),
+        }),
+        proposeBrew: tool({
+          description:
+            'Show the user a candidate brew to confirm in the Add form. Include only fields you have grounds for.',
+          inputSchema: extractionSchema,
+          execute: (candidate) => {
+            const { inferred: claimed, ...fields } = candidate;
+
+            // Everything a proposal tool suggests is the model's idea, so an
+            // unmade inferred claim defaults to "all of it" rather than none.
+            proposals.push(normaliseProposal(fields, claimed ?? [...BREW_FIELDS]));
+
+            return Promise.resolve({
+              summary: 'Proposed a brew for the user to confirm in the Add form.',
+              data: 'The candidate is now shown to the user. Refer to it; do not restate its numbers.',
+            });
+          },
+        }),
+      },
+    });
+
+    // Everything the stream carries beyond these four — step boundaries, tool
+    // input deltas, reasoning bookkeeping — is detail the events above already
+    // summarise, and is deliberately let pass.
+    for await (const part of result.fullStream) {
+      if (part.type === 'text-delta') {
+        if (part.text) yield { type: 'text', delta: part.text };
+      } else if (part.type === 'tool-result') {
+        // The SDK types the name as `string` once it is streaming; the enum
+        // check narrows it, and a name outside the vocabulary — which would
+        // take a bug above to produce — is dropped rather than emitted into a
+        // stream the frontend validates.
+        const tool = coachToolNameSchema.safeParse(part.toolName);
+        if (!tool.success) continue;
+
+        toolCalls += 1;
+        yield { type: 'tool-call', tool: tool.data, summary: readSummary(part.output) };
+
+        // Drained here rather than in execute, because only the stream knows
+        // the order events reach the reader in.
+        if (tool.data === 'proposeBrew') {
+          const proposal = proposals.shift();
+          if (proposal) yield { type: 'proposal', proposal };
+        }
+      } else if (part.type === 'error') {
+        // The loop must not swallow a failed run: no partial answer that
+        // trails off mid-sentence with nothing saying why.
+        throw part.error instanceof Error ? part.error : new Error(String(part.error));
+      } else if (part.type === 'abort') {
+        throw signal.reason instanceof Error ? signal.reason : new Error('The call was aborted.');
+      }
+    }
+
+    const usage = await result.totalUsage;
+
+    yield {
+      type: 'done',
+      usage: { inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 },
+      toolCalls,
+    };
+  }
+}
+
+/**
+ * The extraction, held to the real rules — shared by Quick Log and the coach's
+ * proposeBrew tool, because "a provider never emits a proposal the API would
+ * refuse" has to be one piece of code, not one promise per call site.
+ *
+ * A field the schema refuses is dropped rather than failed on: the person sees
+ * an empty box instead of an error for a value they never typed. `inferred`
+ * keeps only claims about fields that survived.
+ */
+function normaliseProposal(
+  fields: Partial<Record<BrewField, unknown>>,
+  claimed: readonly BrewField[] | undefined,
+): BrewProposal {
+  const brew: Record<string, unknown> = {};
+  const inferred: BrewField[] = [];
+
+  for (const field of BREW_FIELDS) {
+    const raw = fields[field];
+    if (raw === undefined) continue;
+
+    const parsed = createBrewSchema.shape[field].safeParse(raw);
+    if (!parsed.success || parsed.data === undefined) continue;
+
+    brew[field] = parsed.data;
+    if (claimed?.includes(field)) inferred.push(field);
+  }
+
+  const result = brewProposalSchema.safeParse({ brew, inferred });
+
+  // Every field was validated on the way in and `inferred` was filtered to
+  // fields that survived, so this should not fail. It is checked because the
+  // alternative to noticing here is returning a proposal the API promised it
+  // would never return.
+  if (!result.success) throw AppError.aiParseFailed();
+
+  return result.data;
+}
+
+/**
+ * A tool result's trace line. Typed access would be free inside `execute`, but
+ * by the time the result streams past it is the SDK's `unknown` — so the shape
+ * is checked rather than asserted, and a tool that forgot its summary shows as
+ * exactly that instead of as `undefined` in the reader's trace.
+ */
+function readSummary(output: unknown): string {
+  if (
+    typeof output === 'object' &&
+    output !== null &&
+    'summary' in output &&
+    typeof output.summary === 'string'
+  ) {
+    return output.summary;
+  }
+
+  return 'The tool returned no summary.';
 }

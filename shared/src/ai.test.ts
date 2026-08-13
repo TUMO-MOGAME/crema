@@ -3,6 +3,8 @@ import {
   AI_LIMITS,
   BREW_FIELDS,
   brewProposalSchema,
+  coachEventSchema,
+  coachRequestSchema,
   EMPTY_BREW_PROPOSAL,
   quickLogRequestSchema,
 } from './ai.js';
@@ -96,5 +98,54 @@ describe('BREW_FIELDS', () => {
     expect([...BREW_FIELDS].sort()).toEqual(
       ['beans', 'brewedAt', 'coffeeGrams', 'method', 'rating', 'tastingNotes', 'waterGrams'].sort(),
     );
+  });
+});
+
+describe('coachRequestSchema', () => {
+  it('trims before measuring, so whitespace is not a question', () => {
+    expect(() => coachRequestSchema.parse({ question: '   ' })).toThrow(/Ask the coach/);
+  });
+
+  it('refuses a question past the cap', () => {
+    const tooLong = 'a'.repeat(AI_LIMITS.coachQuestionMaxLength + 1);
+
+    expect(() => coachRequestSchema.parse({ question: tooLong })).toThrow(/Keep it under/);
+  });
+
+  it('rejects unknown keys rather than ignoring them', () => {
+    expect(() => coachRequestSchema.parse({ question: 'Best ratio?', model: 'gpt' })).toThrow();
+  });
+});
+
+describe('coachEventSchema', () => {
+  it('accepts each event the stream can carry', () => {
+    const events = [
+      { type: 'text', delta: 'Your best ' },
+      { type: 'tool-call', tool: 'getBrewStats', summary: 'Read the stats: 4 brews.' },
+      { type: 'proposal', proposal: { brew: { method: 'v60' }, inferred: ['method'] } },
+      { type: 'done', usage: { inputTokens: 120, outputTokens: 40 }, toolCalls: 1 },
+      { type: 'error', code: 'INTERNAL_ERROR', message: 'The coach failed mid-answer.' },
+    ];
+
+    for (const event of events) {
+      expect(() => coachEventSchema.parse(event)).not.toThrow();
+    }
+  });
+
+  it('refuses a tool outside the vocabulary, so the trace cannot lie', () => {
+    expect(() =>
+      coachEventSchema.parse({ type: 'tool-call', tool: 'dropTables', summary: 'no' }),
+    ).toThrow();
+  });
+
+  it('holds proposal events to the same schema as every proposal', () => {
+    // A rating of 9 refused here is the same 9 the form would have refused.
+    expect(() =>
+      coachEventSchema.parse({ type: 'proposal', proposal: { brew: { rating: 9 }, inferred: [] } }),
+    ).toThrow();
+  });
+
+  it('refuses an event type it does not know', () => {
+    expect(() => coachEventSchema.parse({ type: 'debug', delta: 'x' })).toThrow();
   });
 });
