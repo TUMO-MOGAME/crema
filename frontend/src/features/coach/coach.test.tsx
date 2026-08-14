@@ -75,6 +75,28 @@ describe('the brew coach', () => {
     expect(await screen.findByText('Answered from your log — 260 tokens.')).toBeInTheDocument();
   });
 
+  it('renders the model’s markdown instead of its asterisks', async () => {
+    // The bold marker split across two deltas, the way a stream actually
+    // delivers it — the renderer sees the pair only once both have landed.
+    stubApi({
+      brews: [],
+      ai: {
+        coach: [
+          { type: 'text', delta: 'Your best ratio is **1:' },
+          { type: 'text', delta: '16**, rated 5/5.' },
+          { type: 'done', usage: { inputTokens: 100, outputTokens: 60 }, toolCalls: 0 },
+        ],
+      },
+    });
+    const { user } = renderApp();
+
+    await askCoach(user, 'Best ratio?');
+    await screen.findByText('Answered from your log — 160 tokens.');
+
+    expect(screen.getByText('1:16').tagName).toBe('STRONG');
+    expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+  });
+
   it('hands a proposal to the Add form rather than saving it', async () => {
     const { calls } = stubApi({ brews: [], ai: { coach: AN_ANSWER } });
     const { user } = renderApp();

@@ -3,6 +3,7 @@ import { useId, useState } from 'react';
 import { Button } from '../../components/button';
 import { Dialog } from '../../components/dialog';
 import { CONTROL_CLASS } from '../../components/field';
+import { CoachAnswer } from './coach-answer';
 import { useCoach } from './use-coach';
 
 /**
@@ -93,10 +94,12 @@ export function CoachDialog({ open, onClose, onProposal }: CoachDialogProps) {
         One region, `aria-live` off. Announcing a stream token by token reads
         the answer out dozens of times; the status right below is the live
         region, and it announces once, when the answer is in.
+
+        Rendered through CoachAnswer rather than as raw text, because the
+        model bolds its figures and lists its comparisons — and the raw
+        version put the asterisks on screen.
       */}
-      {coach.answer && (
-        <p className="text-body text-ink mt-4 whitespace-pre-wrap">{coach.answer}</p>
-      )}
+      {coach.answer && <CoachAnswer text={coach.answer} />}
 
       {/*
         The token count sits beside the answer's provenance because cost
