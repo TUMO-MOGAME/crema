@@ -51,7 +51,8 @@ export function createCoachTools(repository: BrewRepository): CoachTools {
         summary:
           `Read ${brews.length} of ${matching.length} matching brews` +
           (filters.length ? ` (${filters.join(', ')})` : '') +
-          ', newest first.',
+          ', newest first.' +
+          partialLogNote(page.brews.length, page.total),
         data: brews,
       };
     },
@@ -86,11 +87,26 @@ export function createCoachTools(repository: BrewRepository): CoachTools {
         .map(toCoachBrew);
 
       return {
-        summary: `Found ${brews.length} ${brews.length === 1 ? 'brew' : 'brews'} of beans matching "${args.beans}".`,
+        summary:
+          `Found ${brews.length} ${brews.length === 1 ? 'brew' : 'brews'} of beans matching "${args.beans}".` +
+          partialLogNote(page.brews.length, page.total),
         data: brews,
       };
     },
   };
+}
+
+/**
+ * The truncation, said out loud when it happened.
+ *
+ * These tools read one bounded page, which is the honest cost at this log's
+ * scale — but past `READ_LIMIT` brews, a summary that presents the slice as
+ * the whole log would have the model reasoning, and the trace panel claiming,
+ * over data neither knows is partial. The note keeps both honest for the cost
+ * of a sentence, and it costs nothing at all until a log outgrows the page.
+ */
+function partialLogNote(scanned: number, total: number): string {
+  return total > scanned ? ` Searched the newest ${scanned} of ${total} logged brews.` : '';
 }
 
 function toCoachBrew(brew: Brew): CoachBrew {
