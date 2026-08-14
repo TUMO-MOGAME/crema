@@ -40,6 +40,10 @@ export default defineConfig({
         // much of it the *fake's* tests reach, which is none of it — a number
         // that would only ever be misleading.
         'src/ai/gemini-ai-provider.ts',
+        // The shared rate-limit store, covered by its own db test in the
+        // Database stage — the atomic upsert is the behaviour, and only a real
+        // Postgres can exercise it.
+        'src/middleware/drizzle-rate-limit-store.ts',
       ],
       thresholds: {
         lines: 80,

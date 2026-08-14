@@ -8,6 +8,7 @@ import { env } from './config/env.js';
 import { AppError } from './lib/app-error.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { rateLimit } from './middleware/rate-limit.js';
+import { createAiRateLimitStore, type RateLimitStore } from './middleware/rate-limit-store.js';
 import { createBrewRepository, type BrewRepository } from './repositories/index.js';
 import { createAiRoutes } from './routes/ai.js';
 import { brewMethodRoutes } from './routes/brew-methods.js';
@@ -37,6 +38,13 @@ export interface AppDependencies {
    * deterministic fake and exercise the real routes without a key or a network.
    */
   ai?: AiProvider | null;
+
+  /**
+   * Where the AI limiter's counts live. Defaults to what the deployment can
+   * share — Postgres when configured, this process's memory otherwise — and is
+   * injected like everything else so a test can hand over a store it controls.
+   */
+  aiRateLimitStore?: RateLimitStore;
 }
 
 /**
@@ -139,6 +147,11 @@ export function createApp(
    * retry loop against `/api/brews` wastes CPU, and the same loop against
    * `/api/ai` wastes the bill. Ten a minute is far more than a person typing
    * sentences will ever need and far less than a loop can spend.
+   *
+   * This limiter — and only this one — counts in the shared store, because a
+   * per-instance count on serverless is a budget every cold start re-opens.
+   * The general limiter stays in memory: a database round trip on every
+   * request is the AI routes' insurance paid on every endpoint.
    */
   app.use(
     '/api/ai/*',
@@ -146,6 +159,8 @@ export function createApp(
       limit: env.AI_RATE_LIMIT_PER_MINUTE,
       windowMs: 60_000,
       trustProxy: env.TRUST_PROXY,
+      store: dependencies.aiRateLimitStore ?? createAiRateLimitStore(),
+      name: 'ai',
     }),
   );
 

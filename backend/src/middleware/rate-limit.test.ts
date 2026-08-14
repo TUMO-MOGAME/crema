@@ -170,4 +170,80 @@ describe('rate limiting', () => {
 
     expect(response.status).toBe(200);
   });
+
+  /**
+   * The AI limiter hands its counts to a shared store, so the policy half —
+   * this middleware — has to be provably store-agnostic: it asks, it compares,
+   * and everything it knows about the caller went into the key.
+   */
+  describe('with an injected store', () => {
+    function recordingStore(replies: { count: number; resetAt: number }[]) {
+      const keys: string[] = [];
+      let hits = 0;
+
+      return {
+        keys,
+        store: {
+          hit: (key: string) => {
+            keys.push(key);
+            const reply = replies[Math.min(hits, replies.length - 1)];
+            hits += 1;
+            if (!reply) throw new Error('the test supplied no replies');
+            return Promise.resolve({ ...reply });
+          },
+        },
+      };
+    }
+
+    it('answers with what the store counted, not with a count of its own', async () => {
+      const { store } = recordingStore([
+        { count: 1, resetAt: Date.now() + 60_000 },
+        { count: 3, resetAt: Date.now() + 60_000 },
+      ]);
+
+      const app = new Hono<AppEnv>();
+      app.use('*', rateLimit({ limit: 2, windowMs: 60_000, trustProxy: true, store }));
+      app.get('/thing', (c) => c.json({ ok: true }));
+      app.onError(errorHandler);
+
+      expect((await app.request('/thing', from('203.0.113.30'))).status).toBe(200);
+      // The second request is this app's second, but the store says three —
+      // two other instances counted the same caller in between.
+      expect((await app.request('/thing', from('203.0.113.30'))).status).toBe(429);
+    });
+
+    it('prefixes the key with its name, so two limiters can share one table', async () => {
+      const { keys, store } = recordingStore([{ count: 1, resetAt: Date.now() + 60_000 }]);
+
+      const app = new Hono<AppEnv>();
+      app.use('*', rateLimit({ limit: 5, windowMs: 60_000, trustProxy: true, store, name: 'ai' }));
+      app.get('/thing', (c) => c.json({ ok: true }));
+      app.onError(errorHandler);
+
+      await app.request('/thing', from('203.0.113.31'));
+
+      expect(keys).toEqual(['ai:203.0.113.31']);
+    });
+
+    it('reports a store failure as the server fault it is, not as a pass', async () => {
+      const app = new Hono<AppEnv>();
+      app.use(
+        '*',
+        rateLimit({
+          limit: 5,
+          windowMs: 60_000,
+          trustProxy: true,
+          store: { hit: () => Promise.reject(new Error('the counters are unreachable')) },
+        }),
+      );
+      app.get('/thing', (c) => c.json({ ok: true }));
+      app.onError(errorHandler);
+
+      const response = await app.request('/thing', from('203.0.113.32'));
+
+      // Failing open would make the limiter disappear under exactly the load
+      // that finds the failure.
+      expect(response.status).toBe(500);
+    });
+  });
 });
