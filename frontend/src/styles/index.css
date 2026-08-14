@@ -157,6 +157,19 @@
     --ui-extraction-3: oklch(0.69 0.1 68);
     --ui-extraction-4: oklch(0.76 0.13 71);
     --ui-extraction-5: oklch(0.83 0.16 74);
+
+    /**
+     * The backdrop: a texture behind the page, and the veil that keeps it a
+     * texture. The image is the bloom of a pour-over as faint contour lines,
+     * chosen for one property above its looks: even luminance across the whole
+     * frame, so no corner of it ever fights the text. The veil is the surface
+     * colour at 75% — strong enough that the muted text tier keeps its
+     * measured contrast, thin enough that the contours still whisper through.
+     * Anything that must be flat sits on `raised` or `sunken`, which stay
+     * opaque.
+     */
+    --ui-backdrop: url('/bg-dark.webp');
+    --ui-backdrop-veil: oklch(0.14 0.02 43 / 0.75);
   }
 
   /* System preference, unless the reader has chosen for themselves. */
@@ -187,6 +200,11 @@
       --ui-extraction-3: oklch(0.54 0.11 66);
       --ui-extraction-4: oklch(0.5 0.13 64);
       --ui-extraction-5: oklch(0.46 0.14 62);
+
+      /* Cream paper with the ghost of a cup ring. Quieter than the dark
+         theme's contours, so its veil is thinner. */
+      --ui-backdrop: url('/bg-light.webp');
+      --ui-backdrop-veil: oklch(0.97 0.01 70 / 0.6);
     }
   }
 
@@ -213,6 +231,11 @@
     --ui-extraction-3: oklch(0.54 0.11 66);
     --ui-extraction-4: oklch(0.5 0.13 64);
     --ui-extraction-5: oklch(0.46 0.14 62);
+
+    /* Cream paper with the ghost of a cup ring. Quieter than the dark
+       theme's contours, so its veil is thinner. */
+    --ui-backdrop: url('/bg-light.webp');
+    --ui-backdrop-veil: oklch(0.97 0.01 70 / 0.6);
   }
 }
 
@@ -247,6 +270,30 @@
 
   body {
     @apply bg-surface text-ink font-sans antialiased;
+  }
+
+  /**
+   * The backdrop, painted on a fixed pseudo-element rather than on `body`.
+   *
+   * `background-attachment: fixed` would be the one-line version, and mobile
+   * Safari ignores it — the image would scroll on exactly the screens most of
+   * this app's 6am readers hold. A fixed element with a normal background is
+   * the same effect implemented with parts every browser respects.
+   *
+   * The veil is baked into the same paint as the image, so there is never a
+   * frame where one exists without the other. `body` keeps its opaque surface
+   * colour underneath: while the image loads — or if it never does — the page
+   * is exactly what it was before this layer existed.
+   */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image:
+      linear-gradient(var(--ui-backdrop-veil), var(--ui-backdrop-veil)), var(--ui-backdrop);
+    background-size: cover;
+    background-position: center;
   }
 
   /**
