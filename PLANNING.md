@@ -2,7 +2,7 @@
 
 **Project:** Crema — a brew log for people who take coffee seriously **Author:**
 Tumo Mogame **Assessment:** XPL Full-stack Developer Bootcamp **Last updated:**
-2026-08-13
+2026-08-14
 
 This document is the plan of record. It explains what is being built, why each
 technical decision was made, and in what order the work happens. Live progress
@@ -564,6 +564,7 @@ these phases is what STATUS.md tracks.
 | **5 — Polish**     | Optimistic updates, toasts, skeletons, focus management, motion, a11y pass        | Lighthouse ≥ 95 accessibility                        |
 | **6 — AI**         | Provider abstraction, Quick Log, Coach agent, tools, trace UI, guardrails         | Works with a key; degrades cleanly without one       |
 | **7 — Ship**       | Vercel services deploy, `deployment.md`, README, demo data, screenshots           | Live URL, green pipeline, all of section 9 checked   |
+| **8 — Hardening**  | The section 13 audit findings, fixed in severity order                            | Every finding closed or recorded as a manual step    |
 
 Phases 3 and 4 can overlap once the API contract in `shared/` is frozen.
 
@@ -623,3 +624,33 @@ Settled 2026-08-10, while shipping Phase 7:
 | Scope creep from the AI work                    | AI is Phase 6. Everything the brief requires is complete and shippable at the end of Phase 5                                                 |
 | Vercel monorepo build resolution                | Root Directory must be the repository root or services mode never engages; recorded in deployment.md after the first failed deploy proved it |
 | Over-engineering                                | Section 1.3 states what is deliberately not built, and the README repeats it                                                                 |
+
+---
+
+## 13. Hardening — the 2026-08-14 audit
+
+A full audit of the codebase — architecture, security, code quality, UI — on
+2026-08-14 found no critical issues and nine worth fixing. They are listed here
+in severity order, which is also the order Phase 8 works through them. Each row
+names the fix so the work is a checklist rather than a judgement call.
+
+| #   | Severity | Finding                                                                                             | Fix                                                                                                                               |
+| --- | -------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | High     | The AI routes spend money per request, and the limiter guarding them counts per serverless instance | A shared rate-limit store in Postgres for `/api/ai/*`, so every instance draws from one budget. In-memory stays for the rest      |
+| 2   | High     | The database password predates this pass and is not a generated value                               | **Manual:** reset it in the Supabase dashboard to a long generated value, update Vercel's `DATABASE_URL`, and the local `.env`    |
+| 3   | Medium   | No error boundary — one render exception unmounts the whole app to a blank page                     | A boundary around the tree with a styled fallback and a reload action                                                             |
+| 4   | Medium   | `brewedAt` exists so yesterday's brew can be logged honestly, but the form has no control for it    | An optional datetime field in the add/edit dialog; blank still means "now"                                                        |
+| 5   | Low-Med  | The API client has no timeout, so a hung request leaves "Saving…" forever                           | A 15-second `AbortSignal.timeout` on every `apiRequest`, surfaced as the retryable network error the UI already handles           |
+| 6   | Low      | The `ai_messages` schema comment says the coach trace is persisted; nothing writes those tables yet | Reword the comments to say the tables are forward provision for a persistence feature that has not shipped                        |
+| 7   | Low      | Coach tools read the newest 200 brews and their summaries describe the slice as the whole log       | When the log is larger than the page read, the summary says so — the shown-work trace stays honest                                |
+| 8   | Low      | Tasting notes, a 500-character prose field, is edited in a single-line input                        | A textarea                                                                                                                        |
+| 9   | Low      | The light-theme token block is declared twice and can drift; SSE parsing has two robustness gaps    | A test asserting the two blocks agree token for token; the stream parser accepts CRLF framing and maps bad JSON to the same error |
+
+Finding 2 is the one this repository cannot fix in code: the credential lives in
+the Supabase dashboard and the Vercel environment, so rotating it is an operator
+action. It is recorded here so "done" has a definition that includes it.
+
+Out of scope for Phase 8, deliberately: authentication. It retires finding 1
+outright, and the schema has already paid for it — `user_id` on every owned row,
+RLS policies written and enabled — but it is a product decision, not a hardening
+fix, and it stays in section 1.3 until the product asks for it.
