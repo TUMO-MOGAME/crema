@@ -66,8 +66,12 @@ export async function* streamCoachAnswer(
       buffered += decoder.decode(value, { stream: true });
 
       // Everything before the last blank line is complete events; whatever
-      // follows it is an event still arriving and stays buffered.
-      const blocks = buffered.split('\n\n');
+      // follows it is an event still arriving and stays buffered. The SSE
+      // format allows CRLF line endings as well as LF — our backend writes
+      // LF, but a proxy that re-frames the stream is allowed to disagree,
+      // and a parser that only knew one dialect would silently buffer the
+      // whole answer waiting for a delimiter that never comes.
+      const blocks = buffered.split(/\r?\n\r?\n/);
       buffered = blocks.pop() ?? '';
 
       for (const block of blocks) {
@@ -89,10 +93,23 @@ export async function* streamCoachAnswer(
 
 /** One SSE block to one validated event; blocks without data are keep-alives. */
 function parseEvent(block: string): CoachEvent | null {
-  const data = /^data: (.+)$/m.exec(block)?.[1];
+  // The lazy match plus optional `\r` keeps a CRLF-framed line from smuggling
+  // its carriage return into the JSON payload.
+  const data = /^data: (.+?)\r?$/m.exec(block)?.[1];
   if (!data) return null;
 
-  const parsed = coachEventSchema.safeParse(JSON.parse(data));
+  // Unparseable JSON and a shape the schema refuses are the same failure —
+  // the stream said something this app cannot read — so they throw the same
+  // error, rather than one wearing the contract's message and the other
+  // escaping as a raw SyntaxError.
+  let payload: unknown;
+  try {
+    payload = JSON.parse(data);
+  } catch {
+    throw new ApiError('INTERNAL_ERROR', 'The coach sent an event this app does not understand.', 200); // prettier-ignore
+  }
+
+  const parsed = coachEventSchema.safeParse(payload);
 
   if (!parsed.success) {
     throw new ApiError('INTERNAL_ERROR', 'The coach sent an event this app does not understand.', 200); // prettier-ignore
