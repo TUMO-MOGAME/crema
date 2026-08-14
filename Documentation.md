@@ -15,11 +15,12 @@ Crema is a coffee brew log. A user records each brew — the beans, the method,
 the coffee and water doses, a rating out of five, and tasting notes — then reads
 the log back as a list, filters it by brew method, and edits or deletes entries.
 
-That is the assessment brief. Beyond it, Crema adds two features that use the
-log as data rather than as storage: natural-language brew capture, and a coach
-agent that answers questions about your brewing using tools over your own
-history. Both are optional at runtime and disable themselves cleanly when no AI
-key is configured.
+That is the assessment brief. Beyond it, Crema adds three features that use the
+log as data rather than as storage: natural-language brew capture, a coach agent
+that answers questions about your brewing using tools over your own history, and
+flavour tagging that normalises free-text tasting notes into a controlled
+vocabulary so they become filterable. All three are optional at runtime and
+disable themselves cleanly when no AI key is configured.
 
 The system is a small monorepo: a React single-page app, a standalone JSON API,
 and a package of Zod schemas that both import so the API contract exists in
@@ -94,6 +95,8 @@ startup with a readable message if anything is missing or malformed.
 | `CORS_ORIGIN`              | no                               | `http://localhost:5173` | Comma-separated allowed origins           |
 | `DATA_SOURCE`              | no                               | `memory`                | `memory` or `postgres`                    |
 | `DATABASE_URL`             | only when `DATA_SOURCE=postgres` | —                       | Supabase connection string                |
+| `RATE_LIMIT_PER_MINUTE`    | no                               | `120`                   | Per-caller ceiling across the whole API   |
+| `TRUST_PROXY`              | no                               | `false`                 | Believe forwarding headers. Vercel only   |
 | `GEMINI_API_KEY`           | no                               | —                       | Enables the AI features. Backend only     |
 | `GEMINI_MODEL`             | no                               | `gemini-flash-latest`   | Model id, swappable without a code change |
 | `AI_RATE_LIMIT_PER_MINUTE` | no                               | `10`                    | Per-IP ceiling on AI requests             |
@@ -119,8 +122,10 @@ brief.
 
 3. Restart. `GET /api/health` reports `ai.enabled: true`.
 
-As built today that enables `POST /api/ai/quick-log`, which reads a sentence and
-returns a brew proposal:
+That enables all three AI surfaces, each shipped end to end — endpoint and UI.
+
+**Quick Log** — `POST /api/ai/quick-log` reads a sentence and returns a brew
+proposal:
 
 ```bash
 curl -X POST http://localhost:3000/api/ai/quick-log \
@@ -129,19 +134,48 @@ curl -X POST http://localhost:3000/api/ai/quick-log \
 ```
 
 It answers `200` with `{ brew, inferred }` — a candidate, not a record. Nothing
-is written; `POST /api/brews` is still the only route that creates a brew, and
-the user confirms the pre-filled form first. The Quick Log button and the Brew
-Coach are still to come, so the endpoint is currently ahead of the UI.
+is written; `POST /api/brews` is still the only route that creates a brew. In
+the app this is the sentence box at the top of the Add form: it pre-fills the
+controls, marks the fields the model inferred rather than was told, and the user
+confirms with Save.
+
+**The Brew Coach** — `POST /api/ai/coach` takes one question about the log and
+answers as a stream of server-sent events: text as it is generated, a readable
+trace line for every tool the agent used, any brew it proposes, and what the
+call cost. The Coach button beside Add opens the panel; the trace — "Read 12 of
+12 matching brews (v60), newest first." — is shown to the reader, because an
+answer grounded in your own data should say what it looked at. A proposed brew
+opens in the Add form for confirmation, through the same door as everything
+else.
+
+**Flavour tagging** — `POST /api/ai/flavor-tags` reads a saved brew's tasting
+notes and indexes them into a controlled vocabulary of fourteen categories,
+stored with `source: 'ai'` and a confidence so a derived tag is never mistaken
+for a chosen one. The client requests it after a save succeeds, in its own
+request, so a slow model can never make saving feel slow; the tags appear on the
+edit dialog.
+
+The rule all three hold to: **the model proposes, the human commits.** Nothing a
+model produces is written to the log without a person pressing Save, and the
+tags — the one AI write — are an index over words the person already saved.
+
+The AI routes carry their own rate limit (`AI_RATE_LIMIT_PER_MINUTE`, ten per
+minute by default) because every request behind them spends money at a third
+party. When the app runs on Postgres, those counts live in the database rather
+than in process memory, so on serverless every instance draws from one budget
+instead of each cold start opening a fresh one.
 
 Without the key, `/api/ai/*` returns `503` with `AI_UNAVAILABLE`, the health
-endpoint says so, and every other feature is unaffected. That path is tested
-rather than assumed.
+endpoint says so, and the UI hides all three surfaces rather than offering
+something that breaks when pressed. That path is tested rather than assumed.
 
 ## 6. Connect Supabase — optional locally, required in production
 
-The full schema ships as ordered SQL migrations in `supabase/migrations/`. The
-running app does not use them yet — it uses the in-memory adapter — because
-persistence sits behind an interface. See
+The full schema ships as ordered SQL migrations in `supabase/migrations/`, and
+persistence sits behind an interface, so which store runs is a deployment
+decision rather than a code path. Local development defaults to the in-memory
+adapter; **the deployed app runs on Supabase Postgres**, switched over with the
+two variables below and nothing else. See
 [PLANNING.md §5](./PLANNING.md#5-database-strategy--migrations-now-connection-later).
 
 Optional is meant literally for local work: clone, install, run, and the app
@@ -153,12 +187,14 @@ production process on it rather than letting that happen quietly.
 To switch over:
 
 1. Create a project at <https://supabase.com>.
-2. Apply the migrations:
+2. Apply the migrations with the repository's own runner — the same script CI
+   uses, which records what it applied and skips it next time:
 
    ```bash
-   supabase link --project-ref <your-ref>
-   supabase db push
+   DATABASE_URL=postgresql://... npm run db:apply
    ```
+
+   (`npm run db:reset` applies and then seeds the demo data.)
 
 3. Set both variables in `.env`:
 
@@ -170,7 +206,9 @@ To switch over:
 4. Restart. `GET /api/health` reports `dataSource: postgres`.
 
 No application code changes. If `DATA_SOURCE=postgres` is set without a
-`DATABASE_URL`, the process refuses to start and says so.
+`DATABASE_URL`, the process refuses to start and says so. New migrations —
+`0009_rate_limits.sql` was one — are a re-run of step 2: the ledger applies only
+what is new.
 
 ## 7. Project layout
 
@@ -205,18 +243,22 @@ adapter to be swapped without touching a route handler.
 ## 8. Testing
 
 ```bash
-npm test                  # everything
+npm test                  # everything that needs no external service
 npm run test:coverage     # with thresholds enforced
 npm test -w @crema/backend
 npm test -w @crema/frontend
+npm run test:db           # against a real Postgres — see §10 for bringing one up
+npm run test:ai           # against the real model — needs a key, costs money
 ```
 
-| Layer      | Tool                           | What it covers                                         |
-| ---------- | ------------------------------ | ------------------------------------------------------ |
-| Contract   | Vitest                         | Zod schemas — every validation rule the brief requires |
-| API        | Vitest + Hono test client      | The full middleware stack and every status code        |
-| Components | Vitest + React Testing Library | Behaviour, queried the way a user would                |
-| Journey    | Playwright                     | Add, filter, edit, delete against a production build   |
+| Layer      | Tool                           | What it covers                                                                                  |
+| ---------- | ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Contract   | Vitest                         | Zod schemas — every validation rule the brief requires                                          |
+| API        | Vitest + Hono test client      | The full middleware stack and every status code                                                 |
+| Components | Vitest + React Testing Library | Behaviour, queried the way a user would                                                         |
+| Database   | Vitest + Postgres 17           | Migrations applying, constraints rejecting, Drizzle–SQL drift, RLS, the shared rate-limit store |
+| Provider   | Vitest, contract suite         | The fake and the real Gemini adapter held to one behavioural spec                               |
+| Journey    | Playwright + axe               | Add, filter, edit, delete, and zero WCAG 2.2 AA violations, against a production build          |
 
 Coverage thresholds: 80% lines, 75% branches. CI fails below either.
 
