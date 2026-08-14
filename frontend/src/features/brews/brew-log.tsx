@@ -166,7 +166,12 @@ export function BrewLog() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-6 px-5 py-10 sm:px-8 sm:py-14">
+    // The frosted sheet over the wallpaper: `bg-sheet` is the surface colour
+    // at 85%, and the backdrop blur underneath it is what makes that an
+    // effectively solid ground for text whatever the photograph is doing.
+    // Full height on purpose — a column of glass from top to bottom, with the
+    // scene visible in the margins beside it.
+    <main className="bg-sheet border-hairline mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-6 px-5 py-10 backdrop-blur-xl sm:border-x sm:px-8 sm:py-14">
       <div className="flex justify-end">
         <ThemeToggle />
       </div>
