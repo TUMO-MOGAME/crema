@@ -86,13 +86,34 @@ interface RequestOptions extends RequestInit {
   schema?: ZodType;
 }
 
+/**
+ * How long a request may go unanswered before it is abandoned.
+ *
+ * Without a ceiling, a connection that neither completes nor errors — a hop
+ * that went quiet mid-request — leaves the UI on "Saving…" forever, which is
+ * a state with no exit. Fifteen seconds is far past anything this API does in
+ * health; what it bounds is the pathological case, and the failure it produces
+ * is the retryable network error every screen already knows how to render.
+ *
+ * The coach's SSE stream does not come through here, deliberately: a streamed
+ * answer is *supposed* to stay open while the model thinks, and it carries its
+ * own abort signal instead.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { schema, ...init } = options;
   let response: Response;
 
+  // The caller's signal and the deadline, whichever fires first — the same
+  // composition the backend uses on its own model calls.
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+
   try {
     response = await fetch(`${BASE_URL}${path}`, {
       ...init,
+      signal,
       headers: {
         // Only when there is something to describe. Setting it unconditionally
         // put `Content-Type: application/json` on every GET and DELETE, and
@@ -102,10 +123,18 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
         ...init.headers,
       },
     });
-  } catch {
+  } catch (error) {
+    // Named separately because the reader's next move differs: a refused
+    // connection says check the network, a timeout says the server may still
+    // be there and slow — trying again is reasonable either way, which is why
+    // both wear the retryable code.
+    const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
+
     throw new ApiError(
       'NETWORK_ERROR',
-      'Could not reach the server. Check your connection and try again.',
+      timedOut
+        ? 'The server is taking too long to answer. Try again.'
+        : 'Could not reach the server. Check your connection and try again.',
       0,
     );
   }
