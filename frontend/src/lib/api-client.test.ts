@@ -113,6 +113,33 @@ describe('apiRequest', () => {
     expect(error.status).toBe(0);
     expect(error.isRetryable).toBe(true);
   });
+
+  it('bounds every request with a timeout signal, so a hung request has an exit', async () => {
+    respondWith({ status: 'ok' });
+
+    await apiRequest('/api/health');
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('reports a timeout as the retryable network failure it is', async () => {
+    // What `AbortSignal.timeout` makes fetch reject with when the deadline
+    // passes. Simulated rather than waited for — the behaviour under test is
+    // the mapping, not the clock.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError')),
+    );
+
+    const error = (await apiRequest('/api/health').catch((e: unknown) => e)) as ApiError;
+
+    expect(error.code).toBe('NETWORK_ERROR');
+    expect(error.isRetryable).toBe(true);
+    // A different sentence from the unreachable case: the server may be up and
+    // slow, and telling someone to check their connection would misdirect them.
+    expect(error.message).toContain('taking too long');
+  });
 });
 
 describe('ApiError.isRetryable', () => {
