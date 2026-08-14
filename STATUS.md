@@ -23,18 +23,18 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
 | 6     | AI — Quick Log, Coach agent, guardrails       | **done**    | 100%     |
-| 7     | Ship — Vercel, docs, demo                     | in progress | 95%      |
+| 7     | Ship — Vercel, docs, demo                     | in progress | 98%      |
 | 8     | Hardening — the audit's findings              | in progress | 90%      |
 
 **Overall: planning, phases 0 through 6, and the Phase 8 hardening pass are
-complete; Phase 7 is down to its last two artefacts.** 597 unit tests, database,
+complete; Phase 7 is down to its last artefact.** 597 unit tests, database,
 provider and end-to-end suites passing, `main` protected and green. **The app is
 live** — serving from Supabase behind a single public origin with all three AI
 surfaces enabled, verified end to end, and the URL recorded in
 [deployment.md](./deployment.md). All thirty acceptance criteria are ticked
 against evidence; the README and Documentation.md are level with what shipped,
-and what remains is screenshots with the demo recording, plus Phase 8's one
-operator step — rotating the database credential.
+and what remains is the demo recording, plus Phase 8's one operator step —
+rotating the database credential.
 
 ---
 
@@ -213,12 +213,11 @@ does not mask anything.
 
 ## Next
 
-Two artefacts and one operator step, none of them code. Screenshots and the demo
-recording close Phase 7 — the README and Documentation.md halves of the
-documentation sweep are done, brought level with the three AI surfaces, the live
-Postgres deployment and the hardening pass. Rotating the database credential in
-the Supabase dashboard closes Phase 8; PLANNING section 13 keeps that box open
-until it is ticked.
+One artefact and one operator step, neither of them code. The demo recording
+closes Phase 7 — the README now opens on four screens captured from the live
+deployment, wallpaper and all, with the wireframes they grew from kept beside
+them. Rotating the database credential in the Supabase dashboard closes Phase 8;
+PLANNING section 13 keeps that box open until it is ticked.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -604,3 +603,4 @@ content-identical cherry-picked sync PRs are the honest path from here, and
 | 2026-08-14 | The coach answers in type. A CoachAnswer renderer draws the model's markdown — bold figures, dash and numbered lists, italics, code — as styled elements built purely from React text nodes, with an unclosed bold at the stream's edge rendered as bold-in-progress rather than flashing asterisks. The prompt meets it halfway: lead with the answer, bold only the figures, dash-list any comparison of three or more.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 2026-08-14 | The backdrop, twice. Round one shipped a near-invisible texture pair and taught the real requirement; round two ships it: a steaming cup on a lamplit table behind the dark theme, a latte on sunlit linen behind the light, chosen from four generated candidates reviewed under the exact treatment they would wear. The content column is now a full-height frosted sheet — surface at 85% over a heavy backdrop blur — so the scene lives in the margins and the text's ground is effectively solid. 38 KB for both images; the parity test guards the three new tokens.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 2026-08-14 | Both repositories aligned and the wallpaper deployed. The portfolio's rebase merge of the first sync re-minted fifteen shared commits as eleven new ids, so the mirror now tracks content rather than commit identity — recorded as a decision, and the sync routine is now a cherry-picked branch on the mirror's own history, verified tree-identical before the PR opens. Production tracks the portfolio, so merging the wallpaper sync was also the deploy.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 2026-08-14 | The screens are the app now. Four screenshots captured from the production deployment — the log in both themes, the coach mid-answer with its bold figures and dash list, and the Add form with Quick Log — replace the wireframes in the README, which move to a kept-beside-them link. The live URL in the README becomes the short public one. What remains of Phase 7 is the demo recording alone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
