@@ -158,7 +158,16 @@ export const brewFlavorTags = pgTable(
   (table) => [primaryKey({ columns: [table.brewId, table.tagId] })],
 );
 
-/** One coach thread. */
+/**
+ * One coach thread.
+ *
+ * This table and the two below it are forward provision, not live behaviour:
+ * the schema shipped ahead of the persistence feature, and nothing reads or
+ * writes them yet — a coach conversation today lives in the browser and ends
+ * with the tab. They are declared and migrated now for the same reason
+ * `user_id` is: adding a table before the feature costs a migration, adding it
+ * after costs a backfill.
+ */
 export const aiConversations = pgTable(
   'ai_conversations',
   {
@@ -174,10 +183,12 @@ export const aiConversations = pgTable(
 );
 
 /**
- * Turns within a thread, including the tool calls the agent made.
+ * Turns within a thread, including the tool calls the agent made. Forward
+ * provision, like `ai_conversations` above — nothing writes here yet.
  *
- * `toolCalls` is persisted because the coach shows its working — the trace is
- * part of the answer, not debug output, so it has to survive a page reload.
+ * `toolCalls` has a column because the coach shows its working — the trace is
+ * part of the answer, not debug output — so the day conversations persist,
+ * the trace persists with them rather than needing a second migration.
  */
 export const aiMessages = pgTable(
   'ai_messages',
@@ -201,13 +212,15 @@ export const aiMessages = pgTable(
 );
 
 /**
- * Brews the agent proposed, and what the human decided about them.
+ * Brews the agent proposed, and what the human decided about them. Forward
+ * provision, like the two tables above — today a proposal lives in the
+ * browser until the person saves or discards it, and nothing writes here.
  *
- * The agent has no write path to `brews`. It writes a suggestion here, the user
- * accepts or rejects it, and only an accepted one becomes a brew — with
- * `brewId` linking back, so the provenance of every AI-originated row stays
- * recoverable. Constraints in `0005_ai.sql` enforce that, rather than leaving
- * it to convention.
+ * The design it is shaped for: the agent has no write path to `brews`. It
+ * would write a suggestion here, the user accepts or rejects it, and only an
+ * accepted one becomes a brew — with `brewId` linking back, so the provenance
+ * of every AI-originated row stays recoverable. Constraints in `0005_ai.sql`
+ * enforce that, rather than leaving it to convention.
  */
 export const aiSuggestions = pgTable(
   'ai_suggestions',
@@ -235,6 +248,21 @@ export const aiSuggestions = pgTable(
   },
   (table) => [index('ai_suggestions_user_id_status_idx').on(table.userId, table.status)],
 );
+
+/**
+ * Fixed-window rate limit counters, shared across serverless instances.
+ *
+ * The AI routes spend money per request, and an in-memory limiter counts per
+ * process — every cold start hands the same caller a fresh budget. This table
+ * is the one budget they all draw from. See `0009_rate_limits.sql` for the
+ * shape of a row and `middleware/drizzle-rate-limit-store.ts` for the atomic
+ * upsert that maintains it.
+ */
+export const rateLimitWindows = pgTable('rate_limit_windows', {
+  key: text('key').primaryKey(),
+  count: integer('count').notNull(),
+  resetAt: timestamptz('reset_at').notNull(),
+});
 
 export type ProfileRow = typeof profiles.$inferSelect;
 export type BrewMethodRow = typeof brewMethods.$inferSelect;
