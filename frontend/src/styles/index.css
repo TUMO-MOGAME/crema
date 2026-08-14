@@ -159,17 +159,22 @@
     --ui-extraction-5: oklch(0.83 0.16 74);
 
     /**
-     * The backdrop: a texture behind the page, and the veil that keeps it a
-     * texture. The image is the bloom of a pour-over as faint contour lines,
-     * chosen for one property above its looks: even luminance across the whole
-     * frame, so no corner of it ever fights the text. The veil is the surface
-     * colour at 75% — strong enough that the muted text tier keeps its
-     * measured contrast, thin enough that the contours still whisper through.
-     * Anything that must be flat sits on `raised` or `sunken`, which stay
+     * The wallpaper, and the two layers that let a photograph sit behind an
+     * interface without ever costing it a letter.
+     *
+     * The scene is a steaming cup on a lamplit table, composed with its calm
+     * darkness on the left and its light in the right margin — visible around
+     * the content, not through it. The veil is a thin wash of the surface
+     * colour that pulls the photograph toward the theme. The sheet is the
+     * content column's frosted glass: surface colour at 85% over a heavy
+     * backdrop blur, which is what makes the text's ground effectively solid
+     * whatever the picture underneath is doing. Anything that must be flat —
+     * dialogs, toasts, panels — sits on `raised` or `sunken`, which stay
      * opaque.
      */
-    --ui-backdrop: url('/bg-dark.webp');
-    --ui-backdrop-veil: oklch(0.14 0.02 43 / 0.75);
+    --ui-backdrop: url('/wallpaper-dark.webp');
+    --ui-backdrop-veil: oklch(0.14 0.02 43 / 0.35);
+    --ui-sheet: oklch(0.14 0.02 43 / 0.85);
   }
 
   /* System preference, unless the reader has chosen for themselves. */
@@ -201,10 +206,11 @@
       --ui-extraction-4: oklch(0.5 0.13 64);
       --ui-extraction-5: oklch(0.46 0.14 62);
 
-      /* Cream paper with the ghost of a cup ring. Quieter than the dark
-         theme's contours, so its veil is thinner. */
-      --ui-backdrop: url('/bg-light.webp');
-      --ui-backdrop-veil: oklch(0.97 0.01 70 / 0.6);
+      /* A latte on sunlit linen — the light theme's morning. The same two
+         layers as the dark theme: a thin wash, and the frosted sheet. */
+      --ui-backdrop: url('/wallpaper-light.webp');
+      --ui-backdrop-veil: oklch(0.97 0.01 70 / 0.3);
+      --ui-sheet: oklch(0.97 0.01 70 / 0.85);
     }
   }
 
@@ -232,10 +238,11 @@
     --ui-extraction-4: oklch(0.5 0.13 64);
     --ui-extraction-5: oklch(0.46 0.14 62);
 
-    /* Cream paper with the ghost of a cup ring. Quieter than the dark
-       theme's contours, so its veil is thinner. */
-    --ui-backdrop: url('/bg-light.webp');
-    --ui-backdrop-veil: oklch(0.97 0.01 70 / 0.6);
+    /* A latte on sunlit linen — the light theme's morning. The same two
+       layers as the dark theme: a thin wash, and the frosted sheet. */
+    --ui-backdrop: url('/wallpaper-light.webp');
+    --ui-backdrop-veil: oklch(0.97 0.01 70 / 0.3);
+    --ui-sheet: oklch(0.97 0.01 70 / 0.85);
   }
 }
 
@@ -261,6 +268,7 @@
   --color-danger: var(--ui-danger);
   --color-danger-surface: var(--ui-danger-surface);
   --color-danger-ink: var(--ui-danger-ink);
+  --color-sheet: var(--ui-sheet);
 }
 
 @layer base {
