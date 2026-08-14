@@ -23,17 +23,18 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
 | 6     | AI — Quick Log, Coach agent, guardrails       | **done**    | 100%     |
-| 7     | Ship — Vercel, docs, demo                     | in progress | 85%      |
+| 7     | Ship — Vercel, docs, demo                     | in progress | 95%      |
 | 8     | Hardening — the audit's findings              | in progress | 90%      |
 
-**Overall: planning and phases 0 through 6 are complete; what remains is Phase
-7's closing sweep.** 559 unit tests, 106 database tests, 20 provider tests and
-16 end-to-end journeys passing, `main` protected and green. **The app is live**
-— serving from Supabase behind a single public origin with all three AI surfaces
-enabled, verified end to end, and the URL recorded in
+**Overall: planning, phases 0 through 6, and the Phase 8 hardening pass are
+complete; Phase 7 is down to its last two artefacts.** 587 unit tests, database,
+provider and end-to-end suites passing, `main` protected and green. **The app is
+live** — serving from Supabase behind a single public origin with all three AI
+surfaces enabled, verified end to end, and the URL recorded in
 [deployment.md](./deployment.md). All thirty acceptance criteria are ticked
-against evidence; what remains is the README pass, Documentation.md, screenshots
-and the demo.
+against evidence; the README and Documentation.md are level with what shipped,
+and what remains is screenshots with the demo recording, plus Phase 8's one
+operator step — rotating the database credential.
 
 ---
 
@@ -203,10 +204,12 @@ does not mask anything.
 
 ## Next
 
-Phase 7's last three items, all documentation: the README pass, Documentation.md
-brought level with the AI surfaces, and screenshots with a demo recording. The
-acceptance criteria are ticked — all thirty, against evidence — and Phase 6 is
-complete, so nothing that remains changes a line of code.
+Two artefacts and one operator step, none of them code. Screenshots and the demo
+recording close Phase 7 — the README and Documentation.md halves of the
+documentation sweep are done, brought level with the three AI surfaces, the live
+Postgres deployment and the hardening pass. Rotating the database credential in
+the Supabase dashboard closes Phase 8; PLANNING section 13 keeps that box open
+until it is ticked.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -576,3 +579,4 @@ revision and what it removed.
 | 2026-08-13 | Flavour tags close Phase 6. Tasting notes normalise into the fourteen SCA categories the migration has seeded since Phase 2 — the join table finally earns its keep. The client asks for extraction after a save succeeds, in its own request, so the model's latency can never make saving feel slow, and a failed extraction loses tags, never brews. Tags land with `source: 'ai'` and a two-decimal confidence; a re-extraction replaces the model's previous opinion but never a human's, which the (brew, tag) primary key enforces in Postgres and the in-memory adapter mirrors deliberately. The repository contract grew seven tag cases and the provider contract five — all passing against real Supabase (106 database tests) and real Gemini (20 provider tests) before merging. Editing a brew shows what its notes read as, labelled "tagged by AI", read-only: the tags derive from the text above them, and editing the text is how you change them. 559 unit tests. Phase 6 done.                                                                                                                                                                                                                                                                                                                                                                                     |
 | 2026-08-13 | The plan brought level with what shipped, and the acceptance criteria ticked. PLANNING's API table now carries the flavour tag routes and the coach's mid-stream error semantics; section 6.2 records the switch from generateText to streamText and why; section 6.3 describes extraction as built — asked for after the save, provenance load-bearing — rather than as first imagined. All thirty criteria in section 9 are checked, each against the suite, the live deployment, or the repository that proves it, which closes the Phase 7 checklist item that asked for exactly that. What remains of the project is README, Documentation.md, screenshots and the demo.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 2026-08-14 | Phase 8 opens and closes in one pass: a full audit of the codebase found no criticals and nine findings, now recorded as PLANNING section 13 and fixed in severity order. The AI limiter counts in Postgres so every serverless instance draws one budget (`rate_limit_windows`, migration 0009); an error boundary puts a floor under the tree; the form finally offers the backdating `brewedAt` always promised; every request carries a 15-second timeout; the coach's trace says when it searched a slice of the log; tasting notes get a textarea; the SSE parser reads both framings the format permits; and a test holds the twice-declared light theme to being one theme. The one finding code cannot close — rotating the database credential — is recorded in the plan as the operator step it is.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 2026-08-14 | The documentation brought level with what shipped, which was Phase 7's biggest remaining item. Documentation.md's AI section now describes the three surfaces as built — Quick Log in the form, the coach with its trace, flavour tags on save — instead of promising two of them "still to come"; the Supabase section says production runs Postgres and points at the repository's own migration runner; the env table carries the two variables it was missing; the testing table names the database and provider suites. The README's front-door claim is finally the true one: live, with the URL, one Vercel project not two, and flavour tags in the feature list. Remaining: screenshots, the demo, and the credential rotation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |

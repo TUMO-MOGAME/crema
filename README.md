@@ -9,13 +9,14 @@ Built by [Tumo Mogame](https://github.com/TUMO-MOGAME) for the XPL full-stack
 developer bootcamp assessment. The brief is preserved verbatim in
 [docs/assessment-brief.md](./docs/assessment-brief.md).
 
-> **Current state: Phase 5 of 8 complete — the brew log works, and it is
-> polished.** Read, filter, add, edit and delete, in light or dark, from 320px
-> up, against a real HTTP API — with optimistic writes that roll back, an
-> offline state, and zero axe violations across five page states. Phases 6 and 7
-> — the AI surfaces and deployment — are still ahead, so there is no live URL
-> yet. [STATUS.md](./STATUS.md) is kept current and is the honest answer to "how
-> far along is this".
+> **Current state: live.**
+> <https://crema-backend-tumo-mogames-projects.vercel.app> serves the app from a
+> single origin, backed by Supabase, with all three AI surfaces enabled. Read,
+> filter, add, edit and delete, in light or dark, from 320px up — with
+> optimistic writes that roll back, an offline state, and zero axe violations
+> across every page state. Every phase through the hardening pass is done; what
+> remains is screenshots and a demo recording. [STATUS.md](./STATUS.md) is kept
+> current and is the honest answer to "how far along is this".
 
 ---
 
@@ -32,8 +33,11 @@ tasted; then find the pattern in it.
   validated, pre-filled form back
 - **Brew Coach** — ask "what ratio gives me my best V60s?" and get an answer
   from your own data, with the agent's reasoning steps shown
+- **Flavour tags** — tasting notes read into a controlled vocabulary on save, so
+  "blackcurrant, jasmine" becomes something the log can be filtered by, always
+  marked as AI-derived and never overriding a tag a person chose
 
-The two AI features are optional at runtime. With no API key configured they
+The three AI features are optional at runtime. With no API key configured they
 disable themselves cleanly and everything else works exactly as before.
 
 ## Screens
@@ -54,10 +58,11 @@ drift apart.
 
 **Persistence is an implementation detail.** Route handlers call services,
 services call a `BrewRepository` interface, and an adapter behind that interface
-talks to storage. An in-memory adapter runs the app today; a Drizzle adapter
-over Supabase Postgres is written against the same contract test suite and
-switches on with one environment variable. The full schema already exists as
-reviewed migrations in [`supabase/migrations/`](./supabase).
+talks to storage. An in-memory adapter runs local development out of the box;
+the deployed app runs a Drizzle adapter over Supabase Postgres, held to the same
+contract test suite and switched on with one environment variable — which is
+exactly how it went to production, with no application code changing. The schema
+exists as reviewed migrations in [`supabase/migrations/`](./supabase).
 
 **The AI proposes, the human commits.** Nothing the model produces is ever
 written to the database directly. Quick Log opens a pre-filled form you confirm.
@@ -73,11 +78,11 @@ Full reasoning, including the decisions that were rejected and why, is in
 | ------------ | ---------------------------------------------------------------------------- |
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4, TanStack Query, React Hook Form |
 | **Backend**  | Hono, TypeScript, Zod                                                        |
-| **Database** | Supabase Postgres via Drizzle ORM (schema shipped, connection deferred)      |
+| **Database** | Supabase Postgres via Drizzle ORM, live in production                        |
 | **AI**       | Vercel AI SDK with Google Gemini                                             |
 | **Testing**  | Vitest, React Testing Library, Playwright                                    |
 | **CI/CD**    | GitHub Actions — nine stages, protected `main`                               |
-| **Hosting**  | Vercel, two projects from this one repository                                |
+| **Hosting**  | Vercel — one project running both workspaces as services, one origin         |
 
 ## Quick start
 
@@ -161,17 +166,21 @@ load-bearing yet, because the API connects with a role that bypasses RLS.
 
 What does exist is damage control rather than access control:
 
-| Control               | What it stops                                       |
-| --------------------- | --------------------------------------------------- |
-| Per-caller rate limit | A runaway client or a retry storm                   |
-| 16 KB body limit      | A single request exhausting a function's memory     |
-| CORS allowlist        | A browser on another origin calling the API for you |
-| Strict schemas        | Unknown fields, mass assignment, malformed input    |
+| Control               | What it stops                                                               |
+| --------------------- | --------------------------------------------------------------------------- |
+| Per-caller rate limit | A runaway client or a retry storm                                           |
+| Shared AI budget      | The routes that spend money count in Postgres — one budget across instances |
+| 16 KB body limit      | A single request exhausting a function's memory                             |
+| CORS allowlist        | A browser on another origin calling the API for you                         |
+| Strict schemas        | Unknown fields, mass assignment, malformed input                            |
+| Soft delete           | An emptied log is recoverable, not gone                                     |
 
 So: **do not put a public deployment of v1 in front of data you would mind
-losing.** Either keep the deployment private — Vercel's password protection is
-enough — or wait for Supabase Auth, which is what turns the auth-ready schema
-above into real accounts.
+losing.** The live demo accepts that trade knowingly — it holds demo data, and
+the controls above bound the damage. For anything more, either keep the
+deployment private — Vercel's password protection is enough — or wait for
+Supabase Auth, which is what turns the auth-ready schema above into real
+accounts.
 
 ## Quality gates
 
@@ -206,6 +215,7 @@ size budget. Details in [Documentation.md](./Documentation.md#10-the-pipeline).
 | No hardcoded secrets, `.env.example` present | [`.env.example`](./.env.example)                                      |
 | `Documentation.md`                           | [Documentation.md](./Documentation.md)                                |
 | `deployment.md`                              | [deployment.md](./deployment.md)                                      |
+| Deployed URL                                 | <https://crema-backend-tumo-mogames-projects.vercel.app>              |
 | Tidy git history                             | Conventional Commits, enforced by a `commit-msg` hook                 |
 
 Live progress against all of it: [STATUS.md](./STATUS.md).
@@ -216,6 +226,8 @@ Named deliberately, because knowing what you did not build matters as much as
 knowing what you did:
 
 - Supabase Auth, turning the auth-ready schema into real multi-user accounts
+- Persisted coach conversations — the `ai_conversations` and `ai_messages`
+  tables are already migrated as provision, so a thread could survive a reload
 - Bean and roaster entities, so the same coffee can be tracked across brews
 - Charts over the flavour-tag data — which descriptors correlate with a 5
 - Offline-first capture with background sync, for logging in a kitchen with no
