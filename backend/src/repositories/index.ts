@@ -1,5 +1,5 @@
 import { env, type Env } from '../config/env.js';
-import { createDatabase } from '../db/client.js';
+import { sharedDatabase } from '../db/client.js';
 import type { BrewRepository } from './brew.repository.js';
 import { DrizzleBrewRepository } from './drizzle-brew.repository.js';
 import { InMemoryBrewRepository } from './in-memory-brew.repository.js';
@@ -22,7 +22,10 @@ export function createBrewRepository(config: Env = env): BrewRepository {
       throw new Error('DATABASE_URL is required when DATA_SOURCE is "postgres".');
     }
 
-    return new DrizzleBrewRepository(createDatabase(config.DATABASE_URL).db);
+    // The shared pool, not a private one: the rate-limit store reads the same
+    // database, and a serverless instance holding two pools to answer one
+    // request would exhaust Postgres connections at half the load.
+    return new DrizzleBrewRepository(sharedDatabase(config.DATABASE_URL));
   }
 
   // Seeded, because an empty list is a worse first impression than a demo one

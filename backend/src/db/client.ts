@@ -20,6 +20,32 @@ export interface DatabaseHandle {
   close: () => Promise<void>;
 }
 
+/**
+ * One pool per connection string, shared by everything in this process.
+ *
+ * The repository factory and the rate-limit store both need a database, and a
+ * serverless instance that opened a pool for each would hold twice the
+ * connections to answer the same requests — Postgres runs out of those long
+ * before it runs out of anything else. Keyed by the string rather than held as
+ * a single value so a test pointing somewhere else cannot poison the handle
+ * the next test reads.
+ *
+ * Nothing closes these; the instance's death does. Tests that need to drain a
+ * pool build their own with `createDatabase`.
+ */
+const shared = new Map<string, DatabaseHandle>();
+
+export function sharedDatabase(connectionString: string): Database {
+  let handle = shared.get(connectionString);
+
+  if (!handle) {
+    handle = createDatabase(connectionString);
+    shared.set(connectionString, handle);
+  }
+
+  return handle.db;
+}
+
 export function createDatabase(connectionString: string): DatabaseHandle {
   const client = postgres(connectionString, {
     // Serverless functions are short-lived and many; a large pool per instance
