@@ -282,7 +282,7 @@ Allowed scopes: `repo`, `ci`, `api`, `web`, `shared`, `db`, `ai`, `docs`,
 
 ### Two remotes
 
-The project lives in two places, with the same history in both.
+The project lives in two places, with the same code in both.
 
 | Remote      | Repository                                                  | Role                                       |
 | ----------- | ----------------------------------------------------------- | ------------------------------------------ |
@@ -294,9 +294,15 @@ the `Umuzi-classroom` organisation and this account has push access but not
 admin. The public mirror is where the branch protection and the enforced PR
 workflow actually live.
 
-```bash
-git pushall   # configured alias: pushes main to both remotes
-```
+The two histories carried identical commits until 2026-08-14, when a sync was
+merged on the mirror with a rebase and the shared commits were re-minted under
+new ids. PLANNING section 11, decision 7 records the choice that followed: the
+mirror now tracks content rather than commit identity, and the `git pushall`
+alias is retired for `main` — a direct push can no longer fast-forward. A sync
+is now a branch cherry-picked onto the mirror's own `main`, checked
+tree-identical against the source (`git diff origin/main HEAD` must be empty)
+and merged by pull request, which also means every sync passes the mirror's own
+nine CI stages on the way in.
 
 ## 10. The pipeline
 
