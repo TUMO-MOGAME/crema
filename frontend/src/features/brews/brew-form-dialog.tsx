@@ -9,6 +9,7 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
 import { useForm, type DefaultValues } from 'react-hook-form';
+import { z } from 'zod';
 import { Button } from '../../components/button';
 import { Dialog } from '../../components/dialog';
 import { CONTROL_CLASS, Field } from '../../components/field';
@@ -27,6 +28,24 @@ import { useFlavorTags } from './use-brews';
  * it is written once. A field that trims to nothing fails here before a request
  * is made, and would fail identically at the API if one were.
  */
+
+/**
+ * The schema the form validates with: the shared contract, with one seam.
+ *
+ * The API speaks ISO instants; a `datetime-local` control speaks
+ * `2026-08-14T06:30`, in the reader's own timezone, and shows nothing at all
+ * if handed an ISO string. So the form holds the control's dialect and this
+ * schema translates at the boundary — empty means "not chosen", a local value
+ * becomes the instant it names, and anything else falls through to the shared
+ * rule so the two sides cannot quietly accept different things.
+ */
+const brewFormSchema = createBrewSchema.extend({
+  brewedAt: z
+    .string()
+    .optional()
+    .transform((value) => localToIso(value))
+    .pipe(createBrewSchema.shape.brewedAt),
+});
 
 interface BrewFormDialogProps {
   open: boolean;
@@ -78,7 +97,7 @@ export function BrewFormDialog({
     getValues,
     formState: { errors, dirtyFields },
   } = useForm<CreateBrewInput>({
-    resolver: zodResolver(createBrewSchema),
+    resolver: zodResolver(brewFormSchema),
     // Validate as soon as a field is left, so the first Save is not the first
     // time anyone hears about a problem.
     mode: 'onTouched',
@@ -91,12 +110,10 @@ export function BrewFormDialog({
   const flavorTags = useFlavorTags(brew?.id);
 
   const applyProposal = (next: BrewProposal) => {
-    // Merge over what is already typed, but never carry a previous proposal's
-    // brewedAt into this one — it has no visible control, so a stale value
-    // would be submitted with nothing on screen saying so.
-    const { brewedAt: _stale, ...current } = getValues();
-
-    reset({ ...current, ...definedFields(next.brew) });
+    // Merge over what is already typed. This used to strip the previous
+    // proposal's brewedAt because nothing on screen showed it; now the field
+    // has a control, a carried-over value is as visible as any other.
+    reset({ ...getValues(), ...definedFields(next.brew) });
     onProposal(next);
   };
 
@@ -132,8 +149,9 @@ export function BrewFormDialog({
           waterGrams: brew.waterGrams,
           rating: brew.rating,
           tastingNotes: brew.tastingNotes,
+          brewedAt: isoToLocal(brew.brewedAt),
         }
-      : { beans: '', tastingNotes: '', ...definedFields(seed?.brew ?? {}) };
+      : { beans: '', tastingNotes: '', brewedAt: '', ...definedFields(seed?.brew ?? {}) };
 
     reset(values);
   }, [open, brew, seed, reset]);
@@ -155,7 +173,13 @@ export function BrewFormDialog({
   }, [error, setError]);
 
   const submit = handleSubmit(async (values) => {
-    await onSubmit(values);
+    // The control speaks in minutes, so an untouched prefill would round the
+    // stored instant down and a routine edit would quietly rewrite when the
+    // brew happened. The exact original stands unless the reader changed it.
+    const submitted =
+      brew && !dirtyFields.brewedAt ? { ...values, brewedAt: brew.brewedAt } : values;
+
+    await onSubmit(submitted);
   });
 
   const bannerMessage = unfieldedMessage(error);
@@ -267,17 +291,46 @@ export function BrewFormDialog({
           )}
         </Field>
 
+        {/*
+          Optional, and blank means "now" — the server stamps the moment it
+          saves, which is what logging a brew as you drink it wants. The field
+          exists for the other case the contract has always supported and the
+          form never offered: yesterday's brew, logged honestly.
+        */}
+        <Field
+          label="Brewed (blank means now)"
+          error={errors.brewedAt?.message}
+          badge={inferred('brewedAt') ? 'inferred' : undefined}
+        >
+          {(props) => (
+            <input
+              {...props}
+              {...register('brewedAt')}
+              data-inferred={inferred('brewedAt') || undefined}
+              type="datetime-local"
+              className={`${CONTROL_CLASS} tabular`}
+            />
+          )}
+        </Field>
+
+        {/*
+          A textarea, because the field holds up to 500 characters of prose and
+          a single-line box asks it to be scrolled through a letterbox. Three
+          rows fits the notes people actually write; the resize handle is for
+          the ones who write more.
+        */}
         <Field
           label="Tasting notes"
           error={errors.tastingNotes?.message}
           badge={inferred('tastingNotes') ? 'inferred' : undefined}
         >
           {(props) => (
-            <input
+            <textarea
               {...props}
               {...register('tastingNotes')}
               data-inferred={inferred('tastingNotes') || undefined}
-              className={CONTROL_CLASS}
+              rows={3}
+              className={`${CONTROL_CLASS} resize-y`}
               autoComplete="off"
             />
           )}
@@ -308,18 +361,6 @@ export function BrewFormDialog({
           </div>
         )}
 
-        {/*
-          The one proposed field with no control of its own. Saying it here is
-          what keeps the submitted brew and the visible form the same claim —
-          a value that rode along silently would be exactly the surprise the
-          confirmation step exists to prevent.
-        */}
-        {proposal?.brew.brewedAt && (
-          <p className="text-small text-ink-muted">
-            Will be logged as brewed {formatBrewedAt(proposal.brew.brewedAt)}.
-          </p>
-        )}
-
         {bannerMessage && (
           <p role="alert" className="text-small text-danger mb-2">
             {bannerMessage}
@@ -346,18 +387,52 @@ export function BrewFormDialog({
   );
 }
 
-/** A proposed brew time, in the reader's locale rather than as an ISO string. */
-function formatBrewedAt(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
-
 /**
  * A field the model did not mention must stay what the person typed — or stay
  * empty — so only fields with values take part in a merge. Spreading the
  * partial as-is would let an explicit undefined overwrite either.
+ *
+ * `brewedAt` is additionally translated into the control's dialect: the
+ * proposal carries the instant as ISO, and a `datetime-local` handed an ISO
+ * string displays an empty box while silently holding a value — the exact
+ * invisible-carry-over this form is built to prevent.
  */
 function definedFields(brew: BrewProposal['brew']): Partial<CreateBrewInput> {
-  return Object.fromEntries(Object.entries(brew).filter(([, value]) => value !== undefined));
+  const fields: Partial<CreateBrewInput> = Object.fromEntries(
+    Object.entries(brew).filter(([, value]) => value !== undefined),
+  );
+
+  if (typeof fields.brewedAt === 'string') fields.brewedAt = isoToLocal(fields.brewedAt);
+
+  return fields;
+}
+
+/**
+ * An ISO instant as a `datetime-local` value: the same moment, written in the
+ * reader's own timezone, to the minute — which is as finely as anyone logs a
+ * cup of coffee.
+ */
+function isoToLocal(iso: string): string {
+  const date = new Date(iso);
+  const pad = (part: number) => String(part).padStart(2, '0');
+
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}
+
+/**
+ * The reverse translation, at the validation boundary. Empty is "not chosen",
+ * which the contract spells `undefined`; a readable value becomes the instant
+ * it names; anything else is passed through unconverted so the shared schema
+ * refuses it with a message that blames this field.
+ */
+function localToIso(value: string | undefined): string | undefined {
+  if (value === undefined || value === '') return undefined;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
 }
 
 /**
