@@ -613,6 +613,32 @@ Settled 2026-08-10, while shipping Phase 7:
    decision cost to learn: services mode only exists when the project's Root
    Directory is the repository root.
 
+Settled 2026-08-14, during the polish pass:
+
+6. **The backdrop — a photographed scene behind frosted glass.** Two iterations,
+   and the first one is the reason the second is right. Round one shipped an
+   abstract texture veiled to near-invisibility, optimised for never competing
+   with text — and it succeeded so completely that it read as no backdrop at
+   all, which missed the want behind the ask. Round two inverts the mechanism:
+   the picture is fully visible — a steaming cup on a lamplit table in the dark
+   theme, a latte on sunlit linen in the light — and the safety layer moved from
+   over the image to under the text. The content column is a full-height sheet
+   of frosted glass, surface colour at 85% over a heavy backdrop blur, so the
+   scene lives in the margins and the text's ground is effectively solid
+   whatever the photograph does. Candidates were reviewed under the exact
+   treatment they would ship with, which is what made the choice a judgement
+   about backgrounds rather than about pictures.
+
+7. **The mirror tracks content, not commit identity.** The first portfolio sync
+   was merged with a rebase, which re-minted the shared commits under new ids —
+   so the two repositories now tell one story in different commits, and a direct
+   push of `main` can never fast-forward again. Rather than force-push the
+   mirror back into byte-identical history, the sync routine accepts the fork:
+   each sync is a branch cherry-picked onto the mirror's own `main`, verified
+   tree-identical against the source before the pull request opens. The mirror's
+   promise narrows from "the same history" to "the same code, reviewably" —
+   which is the half a portfolio actually needs.
+
 ---
 
 ## 12. Risks

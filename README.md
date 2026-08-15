@@ -9,14 +9,14 @@ Built by [Tumo Mogame](https://github.com/TUMO-MOGAME) for the XPL full-stack
 developer bootcamp assessment. The brief is preserved verbatim in
 [docs/assessment-brief.md](./docs/assessment-brief.md).
 
-> **Current state: live.**
-> <https://crema-backend-tumo-mogames-projects.vercel.app> serves the app from a
-> single origin, backed by Supabase, with all three AI surfaces enabled. Read,
-> filter, add, edit and delete, in light or dark, from 320px up — with
-> optimistic writes that roll back, an offline state, and zero axe violations
-> across every page state. Every phase through the hardening pass is done; what
-> remains is screenshots and a demo recording. [STATUS.md](./STATUS.md) is kept
-> current and is the honest answer to "how far along is this".
+> **Current state: live.** <https://crema-backend-three.vercel.app> serves the
+> app from a single origin, backed by Supabase, with all three AI surfaces
+> enabled. Read, filter, add, edit and delete, in light or dark, from 320px up —
+> with optimistic writes that roll back, an offline state, and zero axe
+> violations across every page state. Every phase through the hardening pass is
+> done; what remains is screenshots and a demo recording.
+> [STATUS.md](./STATUS.md) is kept current and is the honest answer to "how far
+> along is this".
 
 ---
 
@@ -42,9 +42,18 @@ disable themselves cleanly and everything else works exactly as before.
 
 ## Screens
 
-| List view                                     | Add and edit                                        |
-| --------------------------------------------- | --------------------------------------------------- |
-| ![List view](./docs/wireframes/list-view.png) | ![Add and edit](./docs/wireframes/add-and-edit.png) |
+Captured from the live deployment — the app as served, not a mockup.
+
+| The log, dark                                                        | The log, light                                                         |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| ![The brew log in the dark theme](./docs/screenshots/list-dark.webp) | ![The brew log in the light theme](./docs/screenshots/list-light.webp) |
+
+| The coach, showing its work                                             | Add a brew, with Quick Log                                                        |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| ![The brew coach answering from the log](./docs/screenshots/coach.webp) | ![The add form with the quick-log sentence box](./docs/screenshots/add-brew.webp) |
+
+The wireframes these screens grew from are kept in
+[docs/wireframes/](./docs/wireframes/).
 
 ## How it is put together
 
@@ -215,7 +224,7 @@ size budget. Details in [Documentation.md](./Documentation.md#10-the-pipeline).
 | No hardcoded secrets, `.env.example` present | [`.env.example`](./.env.example)                                      |
 | `Documentation.md`                           | [Documentation.md](./Documentation.md)                                |
 | `deployment.md`                              | [deployment.md](./deployment.md)                                      |
-| Deployed URL                                 | <https://crema-backend-tumo-mogames-projects.vercel.app>              |
+| Deployed URL                                 | <https://crema-backend-three.vercel.app>                              |
 | Tidy git history                             | Conventional Commits, enforced by a `commit-msg` hook                 |
 
 Live progress against all of it: [STATUS.md](./STATUS.md).
