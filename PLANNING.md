@@ -565,6 +565,7 @@ these phases is what STATUS.md tracks.
 | **6 — AI**         | Provider abstraction, Quick Log, Coach agent, tools, trace UI, guardrails         | Works with a key; degrades cleanly without one       |
 | **7 — Ship**       | Vercel services deploy, `deployment.md`, README, demo data, screenshots           | Live URL, green pipeline, all of section 9 checked   |
 | **8 — Hardening**  | The section 13 audit findings, fixed in severity order                            | Every finding closed or recorded as a manual step    |
+| **9 — Security**   | The section 14 protection steps: TLS, least privilege, patches, backups           | Every gap closed in code, or deferred with a reason  |
 
 Phases 3 and 4 can overlap once the API contract in `shared/` is frozen.
 
@@ -680,3 +681,237 @@ Out of scope for Phase 8, deliberately: authentication. It retires finding 1
 outright, and the schema has already paid for it — `user_id` on every owned row,
 RLS policies written and enabled — but it is a product decision, not a hardening
 fix, and it stays in section 1.3 until the product asks for it.
+
+---
+
+## 14. Security hardening — the ten protection steps
+
+A standard checklist of database and client protections, each measured against
+what this repository actually does rather than what it intends. Three of the
+answers were established by querying the running database rather than by reading
+the code, and two of those three are the reason this section exists.
+
+Nothing here is implemented yet. This is the plan Phase 9 works through, in the
+order section 14.5 gives.
+
+| #   | Step                                    | State          | Where it stands                                                                                |
+| --- | --------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------- |
+| 1   | Parameterised queries / ORM             | **Done**       | Drizzle everywhere; the raw `sql` blocks are static text with no interpolated input            |
+| 2   | Least privilege for database accounts   | **Done**       | `app_runtime` holds DML on the app's tables and nothing else; asserted by negative tests       |
+| 3   | Encrypt at rest                         | **Platform**   | Supabase encrypts the volume; nothing in this repository controls or can verify it             |
+| 3b  | Encrypt in transit                      | **Done**       | `DATABASE_SSL` defaults to `require`; production is refused `disable` at boot                  |
+| 4   | Keep software and patches current       | **Done**       | `npm audit` gates every push, and Dependabot proposes grouped weekly updates                   |
+| 5   | Regular backups, tested restoration     | **Runbook**    | The drill is written into `deployment.md`; running it once is an operator step                 |
+| 6   | Hash passwords with bcrypt or Argon2    | **Not needed** | No accounts, no passwords, no password column. A rule to hold when auth lands                  |
+| 7   | Validate and sanitise input server-side | **Done**       | Shared Zod schemas on every route, `.strict()`, a 16 KB body ceiling, clamped model arguments  |
+| 8   | Secure auth tokens and session controls | **Deferred**   | No sessions in v1 by scope. The shape it takes is written below so it is not improvised later  |
+| 9   | Enforce HTTPS everywhere                | **Done**       | Vercel TLS, HSTS for a year with subdomains, `upgrade-insecure-requests`, `connect-src 'self'` |
+| 10  | Hide internal detail in error messages  | **Done**       | One envelope, generic 500s, stack traces to the log only, malformed ids answered as 404        |
+
+> **Built in Phase 9, 15 August.** Items 1, 3b, 4, 7, 9 and 10 now hold in code;
+> item 2 holds once the operator applies `0010` and swaps the credential, which
+> `deployment.md` walks through. Items 6 and 8 still wait on authentication, by
+> scope.
+>
+> One correction to how this section was first written, kept rather than quietly
+> edited because it is the more useful half of the finding. `pg_stat_ssl` was
+> cited as the evidence that the connection was unencrypted and as the assertion
+> that would keep it encrypted. It is neither. Through the pooler on 6543 that
+> view describes the connection _Supavisor_ holds to Postgres, not the one the
+> client holds to Supavisor — it reads `false` whatever the client does,
+> including with TLS demanded and negotiated. The gap was real and is fixed; the
+> instrument was wrong. What proves the client link now is that it connects at
+> all: `postgres.js` fails closed when it asks for TLS and the server refuses,
+> and a `verify` attempt against Node's trust store failed on certificate
+> validation — which is a handshake, and therefore proof the pooler speaks TLS.
+
+### 14.1 What is already true, and why it counts
+
+**1 — Parameterised queries.** Every read and write goes through Drizzle, which
+parameterises. The two hand-written statements in
+[`drizzle-brew.repository.ts`](./backend/src/repositories/drizzle-brew.repository.ts)
+select from the two stats views with no caller input in them at all, and the
+rate-limit upsert in
+[`drizzle-rate-limit-store.ts`](./backend/src/middleware/drizzle-rate-limit-store.ts)
+passes its key and window as bound parameters through the `sql` tag. Input is
+also validated by Zod before it reaches a repository, so injection has two
+independent things to get past rather than one.
+
+**7 — Server-side validation.** `parseOrThrow` runs a shared schema on every
+body and every query string, and the schemas are `.strict()`, so an unknown
+field is a 400 rather than a silently ignored one — which is what closes mass
+assignment. Ids are checked as UUIDs before a lookup. The 16 KB body ceiling in
+[`app.ts`](./backend/src/app.ts) refuses a payload before it is parsed. Model
+output is treated as hostile input in the same way: tool arguments are clamped,
+and every proposal is re-validated against `createBrewSchema` before it is
+allowed near a form.
+
+**9 — HTTPS.** Vercel terminates TLS and the headers in
+[`vercel.json`](./vercel.json) make it stick: `Strict-Transport-Security` for a
+year including subdomains, `upgrade-insecure-requests` in the CSP, and
+`connect-src 'self'` so the bundle cannot be persuaded to call anywhere else.
+Adding `preload` to the HSTS header is the one increment left, and weighing it
+first is deliberate, because preloading is difficult to reverse.
+
+**10 — Error messages.**
+[`error-handler.ts`](./backend/src/middleware/error-handler.ts) answers every
+unexpected error with one generic sentence and a request id, while the stack
+goes to the log where it is useful. Model errors are never echoed, because they
+can quote their input. A malformed brew id answers 404 rather than 400, so the
+API does not teach a stranger what a valid id looks like.
+
+### 14.2 The two real gaps, and how to close them
+
+**3b — The database connection is not encrypted.** Verified rather than assumed,
+by asking the server about the app's own connection:
+
+```
+select ssl, version, cipher from pg_stat_ssl where pid = pg_backend_pid();
+-- ssl: false
+```
+
+`postgres.js` defaults to no TLS, the Supabase pooler accepts plaintext on 6543,
+and neither end insists — so every query, every brew, and the database password
+itself cross the public internet between Vercel and Supabase in the clear. This
+is the highest-severity item on the page and the cheapest to fix.
+
+The fix is one option in [`db/client.ts`](./backend/src/db/client.ts), and the
+stronger form is worth taking over the shorter one:
+
+```ts
+const client = postgres(connectionString, {
+  max: 5,
+  onnotice: () => undefined,
+  // `require` encrypts but accepts any certificate, so it stops eavesdropping
+  // and not impersonation. Verifying against Supabase's CA closes both.
+  ssl: { rejectUnauthorized: true, ca: env.DATABASE_CA_CERT },
+});
+```
+
+Steps, in order:
+
+1. Download the project CA certificate from the Supabase dashboard, Settings →
+   Database → SSL configuration.
+2. Add it as `DATABASE_CA_CERT` in Vercel and document it in `.env.example` — a
+   CA certificate is public by design — read through the Zod loader like every
+   other value.
+3. Set the `ssl` option above. Keep `sslmode` out of the connection string: one
+   place to read beats two that can disagree.
+4. Prove it, the same way the gap was found. The `pg_stat_ssl` query must report
+   `ssl = true` with a TLS 1.2 or 1.3 version, and that assertion belongs in
+   `schema.db.test.ts` so the Database stage fails if the connection ever
+   silently drops back to plaintext.
+5. If some environment cannot supply a certificate, `ssl: 'require'` is the
+   acceptable floor. Never `false`.
+
+**2 — The application connects as the database owner.** Also verified rather
+than assumed:
+
+```
+current_user: postgres | bypasses_rls: true | can_create_db: true
+has_table_privilege('public.brews', 'DELETE'): true
+```
+
+The credential the API carries can drop tables, create databases, hard-delete
+rows the domain only ever soft-deletes, and — the detail that matters most —
+bypass every row level security policy in
+[`0007_rls.sql`](./supabase/migrations/0007_rls.sql). Those policies are
+written, enabled, and completely inert for this connection. The app defends
+itself well against injection, but least privilege is not about the likelihood
+of a breach; it is about its blast radius, and today the radius is the whole
+database.
+
+The fix is a migration and a credential swap:
+
+1. Add `0010_app_runtime_role.sql` creating a role that can do exactly what the
+   API does and nothing more:
+
+   ```sql
+   create role app_runtime login password 'set-a-generated-value';
+
+   grant usage on schema public to app_runtime;
+   grant select, insert, update on public.brews to app_runtime;
+   grant select on public.brew_methods, public.flavor_tags to app_runtime;
+   grant select, insert, delete on public.brew_flavor_tags to app_runtime;
+   grant select on public.brew_stats, public.brew_stats_by_method to app_runtime;
+   grant select, insert, update, delete on public.rate_limit_windows to app_runtime;
+
+   -- No DELETE on brews: the domain soft-deletes, so the privilege is unused.
+   -- No CREATE on the schema, no ownership, and rolbypassrls stays off.
+   ```
+
+2. Point the deployment's `DATABASE_URL` at `app_runtime`.
+3. Keep the owner credential for migrations alone, as a separate
+   `MIGRATION_DATABASE_URL` that `scripts/apply-migrations.mjs` reads. Schema
+   changes are an operator action; the running app has no business holding a
+   credential that can make them.
+4. The Database stage gets tests asserting the negatives: `app_runtime` cannot
+   `drop table brews` and cannot `delete from brews`. A privilege nobody asserts
+   is a privilege that grows back.
+
+This also converts the RLS policies from documentation into enforcement the day
+authentication lands, because `app_runtime` does not bypass them.
+
+### 14.3 The three worth doing next
+
+**4 — Patches.** CI already fails on a high advisory, and the single low one is
+documented in `package.json` with the reason it is carried. What is missing is
+anything that proposes updates before an advisory forces them. Add
+`.github/dependabot.yml` with a weekly schedule for `npm` at the repository root
+and for `github-actions`, grouping minor and patch bumps into one pull request
+so the pipeline reviews them rather than a person reading changelogs. The
+existing nine stages are exactly what makes automated bumps safe to accept.
+
+**5 — Backups and a tested restore.** An untested backup is a belief. Confirm in
+the Supabase dashboard what the plan actually retains and for how long, then run
+the drill once and write it into `deployment.md`: restore into a scratch
+project, apply nothing, and check that `select count(*) from brews` matches and
+that the flavour-tag join survived. The value of the drill is the procedure it
+leaves behind — a restore improvised during an incident is a second incident.
+`npm run db:apply` already makes a rebuilt schema reproducible; this covers the
+data.
+
+**Credential rotation**, carried over from section 13, belongs in the same
+sitting as step 2: the `app_runtime` password is new by definition, and the
+owner password should be regenerated while the connection strings are open for
+editing anyway.
+
+### 14.4 The two that wait for authentication
+
+Neither is a gap. Both are decisions worth making now so they are not improvised
+under time pressure when accounts land.
+
+**6 — Password hashing.** There is no password column in this schema and no
+password anywhere in this repository, which is the strongest form of this
+control. When authentication lands it is Supabase Auth, which stores bcrypt
+hashes in `auth.users` and never hands the application a password at all. The
+rule to hold: if a credential ever needs storing here, it is Argon2id or bcrypt
+at a current cost factor, and never anything reversible.
+
+**8 — Tokens and sessions.** The shape, decided in advance:
+
+- Supabase Auth issues the JWT; the API verifies its signature and expiry on
+  every request and reads the subject as the caller's `user_id`.
+- That id becomes the `userId` argument the repository interface already
+  anticipates, and the `where` clause in both adapters — which is also the point
+  at which the RLS policies stop being provision and start being enforcement.
+- Short-lived access tokens with refresh rotation, so a leaked access token
+  expires on its own.
+- The access token is held in memory and the refresh token in an `httpOnly`,
+  `Secure`, `SameSite=Lax` cookie. Not `localStorage`: any script that runs on
+  the page can read it, and the CSP is a mitigation rather than a guarantee.
+- A CSRF token becomes necessary the moment a cookie authenticates a request,
+  which is the trade that comes with choosing cookies.
+
+### 14.5 Order of work
+
+1. TLS on the database connection, with the `pg_stat_ssl` assertion in CI.
+2. The `app_runtime` role, the split migration credential, and the negative
+   privilege tests — with both passwords rotated in the same sitting.
+3. Dependabot.
+4. The backup restore drill, written into `deployment.md`.
+5. Steps 6 and 8 land with authentication, whenever the product asks for it.
+
+One through three are a day's work between them and close every gap this
+checklist finds in code. Four is an afternoon, and closes the one it finds in
+operations.

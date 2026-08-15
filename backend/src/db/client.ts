@@ -1,5 +1,6 @@
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import { env, type Env } from '../config/env.js';
 import * as schema from './schema.js';
 
 /**
@@ -46,13 +47,41 @@ export function sharedDatabase(connectionString: string): Database {
   return handle.db;
 }
 
-export function createDatabase(connectionString: string): DatabaseHandle {
+/**
+ * The TLS posture for a connection, as `postgres.js` wants it.
+ *
+ * Exported because it is the whole of the encryption decision and deserves a
+ * test of its own: the failure it guards against is silent, and the difference
+ * between `false` and `'require'` is one word nobody would notice missing.
+ *
+ * `verify` is the only mode that resists an attacker in the middle, and it
+ * needs the certificate because Supabase signs its pooler with a private CA —
+ * Node's trust store rejects it, and `rejectUnauthorized` against the default
+ * store would fail every connection rather than secure it.
+ */
+export function sslOption(
+  config: Env = env,
+): NonNullable<postgres.Options<Record<string, never>>['ssl']> {
+  if (config.DATABASE_SSL === 'disable') return false;
+
+  if (config.DATABASE_SSL === 'verify') {
+    // The loader refuses `verify` without a certificate, so this is present.
+    return { rejectUnauthorized: true, ca: config.DATABASE_CA_CERT };
+  }
+
+  return 'require';
+}
+
+export function createDatabase(connectionString: string, config: Env = env): DatabaseHandle {
   const client = postgres(connectionString, {
     // Serverless functions are short-lived and many; a large pool per instance
     // exhausts Postgres long before it helps.
     max: 5,
     // NOTICE output is not application logging and should not look like it.
     onnotice: () => undefined,
+    // Encrypted unless a deployment has explicitly said otherwise, which the
+    // environment loader will not let production say.
+    ssl: sslOption(config),
   });
 
   return {

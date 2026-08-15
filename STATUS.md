@@ -25,6 +25,7 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 6     | AI — Quick Log, Coach agent, guardrails       | **done**    | 100%     |
 | 7     | Ship — Vercel, docs, demo                     | in progress | 98%      |
 | 8     | Hardening — the audit's findings              | in progress | 90%      |
+| 9     | Security — the ten protection steps           | in progress | 80%      |
 
 **Overall: planning, phases 0 through 6, and the Phase 8 hardening pass are
 complete; Phase 7 is down to its last artefact.** 597 unit tests, database,
@@ -213,15 +214,25 @@ does not mask anything.
 
 ## Next
 
-One artefact and one operator step, neither of them code. The demo recording
-closes Phase 7 — the README now opens on four screens captured from the live
-deployment, wallpaper and all, with the wireframes they grew from kept beside
-them. Rotating the database credential in the Supabase dashboard closes Phase 8;
-PLANNING section 13 keeps that box open until it is ticked.
+**Phase 9 is built; what is left of it is an operator's ten minutes.** The
+connection now encrypts by default — `DATABASE_SSL` with `require`, `verify` and
+`disable`, and a loader that refuses plaintext in production the same way it
+already refuses the in-memory store there. Migration `0010` creates
+`app_runtime`, which holds DML on the application's tables and nothing else: no
+DDL, no ownership, no RLS bypass, and no `DELETE` on brews, because the domain
+soft-deletes. Six negative tests hold that boundary in the Database stage.
+Dependabot proposes grouped weekly updates behind the nine stages that review
+them.
 
-Nothing about them writes to the database directly: the agent proposes and the
-human commits, which is why `ai_suggestions` exists as its own table with
-constraints rather than as a code convention.
+Three steps remain, all outside the repository and all written out in
+`deployment.md`: apply `0010` to production, give `app_runtime` a generated
+password and point `DATABASE_URL` at it — noting the pooler wants
+`app_runtime.<ref>` as the username — and keep the owner string as
+`MIGRATION_DATABASE_URL`. The credential rotation carried since Phase 8 is the
+same sitting: both passwords are being written anyway.
+
+Then the backup restore drill, whose procedure is now a runbook rather than an
+intention, and the demo recording that closes Phase 7.
 
 ---
 
@@ -604,3 +615,5 @@ content-identical cherry-picked sync PRs are the honest path from here, and
 | 2026-08-14 | The backdrop, twice. Round one shipped a near-invisible texture pair and taught the real requirement; round two ships it: a steaming cup on a lamplit table behind the dark theme, a latte on sunlit linen behind the light, chosen from four generated candidates reviewed under the exact treatment they would wear. The content column is now a full-height frosted sheet — surface at 85% over a heavy backdrop blur — so the scene lives in the margins and the text's ground is effectively solid. 38 KB for both images; the parity test guards the three new tokens.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 2026-08-14 | Both repositories aligned and the wallpaper deployed. The portfolio's rebase merge of the first sync re-minted fifteen shared commits as eleven new ids, so the mirror now tracks content rather than commit identity — recorded as a decision, and the sync routine is now a cherry-picked branch on the mirror's own history, verified tree-identical before the PR opens. Production tracks the portfolio, so merging the wallpaper sync was also the deploy.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 2026-08-14 | The screens are the app now. Four screenshots captured from the production deployment — the log in both themes, the coach mid-answer with its bold figures and dash list, and the Add form with Quick Log — replace the wireframes in the README, which move to a kept-beside-them link. The live URL in the README becomes the short public one. What remains of Phase 7 is the demo recording alone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 2026-08-15 | The ten protection steps, measured. PLANNING section 14 walks the standard database and client checklist against this repository and reports what is true rather than what was intended: six already hold — parameterised queries, server-side validation, HTTPS with HSTS, error messages that leak nothing — and two wait on authentication by scope. Two came back wrong, both verified by querying the running database rather than by reading code. The connection is unencrypted (`pg_stat_ssl` says `ssl = false`), and the app connects as `postgres`, which bypasses RLS and can drop the tables it reads. Both fixes are written out with the assertions that would keep them fixed, and Phase 9 is on the board.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2026-08-15 | Phase 9 built. The database connection encrypts by default and production cannot boot without it; `0010_app_runtime_role.sql` adds the least-privileged role the API will run as, with six tests asserting what it cannot do — drop a table, delete a brew, create objects, write the vocabularies — because a boundary nobody asserts grows back the first time someone debugs a permission error with the owner credential. Dependabot proposes grouped weekly updates. `deployment.md` gains three runbooks: encrypting the connection, switching to the role, and the backup restore drill. One correction went into PLANNING section 14 rather than being quietly edited: `pg_stat_ssl` was cited as both the evidence and the future assertion for transit encryption, and through the pooler it measures the wrong hop entirely — the gap was real, the instrument was not.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
