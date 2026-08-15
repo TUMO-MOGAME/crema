@@ -2,7 +2,7 @@
 
 **Project:** Crema — a brew log for people who take coffee seriously **Author:**
 Tumo Mogame **Assessment:** XPL Full-stack Developer Bootcamp **Last updated:**
-2026-08-14
+2026-08-15
 
 This document is the plan of record. It explains what is being built, why each
 technical decision was made, and in what order the work happens. Live progress
@@ -677,6 +677,17 @@ Finding 2 is the one this repository cannot fix in code: the credential lives in
 the Supabase dashboard and the Vercel environment, so rotating it is an operator
 action. It is recorded here so "done" has a definition that includes it.
 
+**Partly closed, 15 August.** Phase 9 changed what this finding is about. The
+credential the request path uses is no longer the owner's: the API connects as
+`app_runtime`, whose password was generated when the role was pointed at
+production, so the value every HTTP request depends on is a strong one that
+never predated this pass. The owner password is unrotated and still the original
+value, now held only in `MIGRATION_DATABASE_URL` and the local `.env`, where
+`db:apply` and `db:reset` read it and nothing else does. The finding therefore
+stands, at materially lower severity than the High it was filed as, and
+STATUS.md lists it among the things carried deliberately rather than among the
+things done.
+
 Out of scope for Phase 8, deliberately: authentication. It retires finding 1
 outright, and the schema has already paid for it — `user_id` on every owned row,
 RLS policies written and enabled — but it is a product decision, not a hardening
@@ -708,10 +719,20 @@ order section 14.5 gives.
 | 9   | Enforce HTTPS everywhere                | **Done**       | Vercel TLS, HSTS for a year with subdomains, `upgrade-insecure-requests`, `connect-src 'self'` |
 | 10  | Hide internal detail in error messages  | **Done**       | One envelope, generic 500s, stack traces to the log only, malformed ids answered as 404        |
 
-> **Built in Phase 9, 15 August.** Items 1, 3b, 4, 7, 9 and 10 now hold in code;
-> item 2 holds once the operator applies `0010` and swaps the credential, which
-> `deployment.md` walks through. Items 6 and 8 still wait on authentication, by
-> scope.
+> **Built and applied in Phase 9, 15 August.** Items 1, 3b, 4, 7, 9 and 10 hold
+> in code. Item 2 now holds in production as well: `0010` is applied,
+> `app_runtime` has a generated password, and `DATABASE_URL` points at it with
+> the owner string kept as `MIGRATION_DATABASE_URL`. The role's attributes were
+> read back off the running database rather than trusted from the migration —
+> `rolsuper`, `rolcreatedb`, `rolcreaterole` and `rolbypassrls` all false, and
+> the grants exactly as section 14.2 specifies, including no `DELETE` on
+> `brews`. Items 6 and 8 still wait on authentication, by scope.
+>
+> One caveat, so this table is not read as more than it says. The owner password
+> was not rotated in the same sitting and is still the pre-Phase-8 value; it is
+> now reachable only by `db:apply` and `db:reset` rather than by every request.
+> That is a reduction in exposure, not the rotation finding 2 of section 13 asks
+> for, and STATUS.md carries it as open.
 >
 > One correction to how this section was first written, kept rather than quietly
 > edited because it is the more useful half of the finding. `pg_stat_ssl` was
