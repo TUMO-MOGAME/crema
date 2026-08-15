@@ -1,7 +1,7 @@
 # Status
 
 **Project:** Crema — Coffee Brew Log **Branch:** `main` **Last updated:**
-2026-08-14
+2026-08-15
 
 Live progress board. Open this file first — it answers "what is done, how far
 along is this, what is next, and what is blocked" without reading any code. The
@@ -25,17 +25,18 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 6     | AI — Quick Log, Coach agent, guardrails       | **done**    | 100%     |
 | 7     | Ship — Vercel, docs, demo                     | in progress | 98%      |
 | 8     | Hardening — the audit's findings              | in progress | 90%      |
-| 9     | Security — the ten protection steps           | in progress | 80%      |
+| 9     | Security — the ten protection steps           | **done**    | 100%     |
 
-**Overall: planning, phases 0 through 6, and the Phase 8 hardening pass are
-complete; Phase 7 is down to its last artefact.** 597 unit tests, database,
+**Overall: planning, phases 0 through 6, and the Phase 8 and 9 security passes
+are complete; Phase 7 is down to its last artefact.** 597 unit tests, database,
 provider and end-to-end suites passing, `main` protected and green. **The app is
 live** — serving from Supabase behind a single public origin with all three AI
 surfaces enabled, verified end to end, and the URL recorded in
-[deployment.md](./deployment.md). All thirty acceptance criteria are ticked
+[deployment.md](./deployment.md). **It no longer runs as the database owner:**
+the API connects as `app_runtime`, which cannot drop a table, hard-delete a
+brew, or bypass row level security. All thirty acceptance criteria are ticked
 against evidence; the README and Documentation.md are level with what shipped,
-and what remains is the demo recording, plus Phase 8's one operator step —
-rotating the database credential.
+and what remains is the demo recording and the restore drill.
 
 ---
 
@@ -50,6 +51,36 @@ variable three days older than the plan revision it contradicted, each recorded
 with what fixed it. The last of those is worth the read — the env loader's
 refusal to run production on the in-memory store fired exactly as designed, at
 the first misconfiguration it was written for.
+
+**Phase 9 is closed, and the API no longer runs as the database owner.**
+Migration `0010` was applied to production, `app_runtime` was given a generated
+password, and `DATABASE_URL` now points at it, with the owner string kept as
+`MIGRATION_DATABASE_URL` where nothing in the request path reads it.
+
+The boundary was verified by reading the role back off the running database
+rather than trusting the migration that created it — which is the habit section
+14 exists to enforce, since three of its own answers came back different from
+what the source implied:
+
+| Attribute       | `app_runtime` |
+| --------------- | ------------- |
+| `rolsuper`      | false         |
+| `rolcreatedb`   | false         |
+| `rolcreaterole` | false         |
+| `rolbypassrls`  | false         |
+
+The grants are the designed shape: `INSERT, SELECT, UPDATE` on `brews` and **no
+`DELETE`**, because the domain soft-deletes; `SELECT` alone on `brew_methods`
+and `flavor_tags`, so the reference vocabularies are read-only to the request
+path; full DML on `rate_limit_windows`, which the limiter needs; and no DDL
+anywhere. `/api/health` reports `postgres` with AI enabled and the log serves,
+which is what proves the role sufficient as well as restrictive — a boundary
+that breaks the app is not a boundary anyone keeps.
+
+`rolbypassrls: false` is the quiet one. It is what finally makes
+[`0007_rls.sql`](./supabase/migrations/0007_rls.sql) load-bearing: those
+policies were always correct and always bypassed, because the owner ignores them
+and `app_runtime` cannot.
 
 The day after going live was a polish pass, shipped as five pull requests and
 mirrored to the portfolio: the audit's hardening (Phase 8), the documentation
@@ -199,6 +230,19 @@ unaffected, because each stage there gets its own runner. The fix is probably
 `pool: 'threads'` for the web workspace, and it is left undone rather than
 slipped into an unrelated change.
 
+One credential is deliberately carried rather than rotated, and it is recorded
+here rather than ticked so the board does not claim more than is true. Phase 8's
+finding 2 — the database password predates that pass and is not a generated
+value — is closed for the credential that matters and open for the one that
+remains. `app_runtime`, which the request path now uses, was given a generated
+password when it was pointed at production. The owner password was not rotated
+in the same sitting, and it lives in Vercel as `MIGRATION_DATABASE_URL` and in
+the local `.env`. What changed is its blast radius: no request reads it, only
+`db:apply` and `db:reset` do, so it went from the credential every HTTP request
+carried to one used by hand at schema changes. That is a judgement about
+exposure rather than a fix, which is why it stays on this list until the
+password is regenerated.
+
 One dependency advisory is deliberately carried rather than fixed, and it is
 recorded here so it is not mistaken for an oversight. `npm audit` reports one
 low advisory, GHSA-g7r4-m6w7-qqqr, in a transitive `esbuild` — a
@@ -214,25 +258,12 @@ does not mask anything.
 
 ## Next
 
-**Phase 9 is built; what is left of it is an operator's ten minutes.** The
-connection now encrypts by default — `DATABASE_SSL` with `require`, `verify` and
-`disable`, and a loader that refuses plaintext in production the same way it
-already refuses the in-memory store there. Migration `0010` creates
-`app_runtime`, which holds DML on the application's tables and nothing else: no
-DDL, no ownership, no RLS bypass, and no `DELETE` on brews, because the domain
-soft-deletes. Six negative tests hold that boundary in the Database stage.
-Dependabot proposes grouped weekly updates behind the nine stages that review
-them.
+Two artefacts, neither of them code. The backup restore drill, whose procedure
+is now a runbook rather than an intention, and the demo recording that closes
+Phase 7.
 
-Three steps remain, all outside the repository and all written out in
-`deployment.md`: apply `0010` to production, give `app_runtime` a generated
-password and point `DATABASE_URL` at it — noting the pooler wants
-`app_runtime.<ref>` as the username — and keep the owner string as
-`MIGRATION_DATABASE_URL`. The credential rotation carried since Phase 8 is the
-same sitting: both passwords are being written anyway.
-
-Then the backup restore drill, whose procedure is now a runbook rather than an
-intention, and the demo recording that closes Phase 7.
+The one carried item that is a decision rather than an omission — the unrotated
+owner password — is described under Blocked on.
 
 ---
 
@@ -617,3 +648,4 @@ content-identical cherry-picked sync PRs are the honest path from here, and
 | 2026-08-14 | The screens are the app now. Four screenshots captured from the production deployment — the log in both themes, the coach mid-answer with its bold figures and dash list, and the Add form with Quick Log — replace the wireframes in the README, which move to a kept-beside-them link. The live URL in the README becomes the short public one. What remains of Phase 7 is the demo recording alone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | 2026-08-15 | The ten protection steps, measured. PLANNING section 14 walks the standard database and client checklist against this repository and reports what is true rather than what was intended: six already hold — parameterised queries, server-side validation, HTTPS with HSTS, error messages that leak nothing — and two wait on authentication by scope. Two came back wrong, both verified by querying the running database rather than by reading code. The connection is unencrypted (`pg_stat_ssl` says `ssl = false`), and the app connects as `postgres`, which bypasses RLS and can drop the tables it reads. Both fixes are written out with the assertions that would keep them fixed, and Phase 9 is on the board.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 2026-08-15 | Phase 9 built. The database connection encrypts by default and production cannot boot without it; `0010_app_runtime_role.sql` adds the least-privileged role the API will run as, with six tests asserting what it cannot do — drop a table, delete a brew, create objects, write the vocabularies — because a boundary nobody asserts grows back the first time someone debugs a permission error with the owner credential. Dependabot proposes grouped weekly updates. `deployment.md` gains three runbooks: encrypting the connection, switching to the role, and the backup restore drill. One correction went into PLANNING section 14 rather than being quietly edited: `pg_stat_ssl` was cited as both the evidence and the future assertion for transit encryption, and through the pooler it measures the wrong hop entirely — the gap was real, the instrument was not.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2026-08-15 | Phase 9 closed, and the API stopped running as the database owner. Migration `0010` applied to production, `app_runtime` given a generated password, `DATABASE_URL` pointed at it and the owner string kept as `MIGRATION_DATABASE_URL`. The boundary was then read back off the running database rather than inferred from the migration: `rolsuper`, `rolcreatedb`, `rolcreaterole` and `rolbypassrls` all false, `INSERT, SELECT, UPDATE` on `brews` with no `DELETE`, `SELECT` alone on the vocabularies, no DDL anywhere — and `/api/health` still green, so the role is sufficient as well as restrictive. `rolbypassrls: false` is what makes `0007_rls.sql` load-bearing for the first time. Phase 8's finding 2 is half closed and said so in Blocked on: the credential in the request path is generated, the owner password is not rotated, and the honest description of that is a smaller blast radius rather than a fix. Also: the mirror brought level after drifting three commits, and fourteen grouped minor and patch bumps taken with Dependabot's Linux lockfile verbatim, since regenerating it on Windows is the trap `.npmrc` exists to prevent.                                                                                                                                                                                                                 |
