@@ -59,7 +59,9 @@ export function sharedDatabase(connectionString: string): Database {
  * Node's trust store rejects it, and `rejectUnauthorized` against the default
  * store would fail every connection rather than secure it.
  */
-export function sslOption(config: Env = env): postgres.Options<Record<string, never>>['ssl'] {
+export function sslOption(
+  config: Env = env,
+): NonNullable<postgres.Options<Record<string, never>>['ssl']> {
   if (config.DATABASE_SSL === 'disable') return false;
 
   if (config.DATABASE_SSL === 'verify') {
