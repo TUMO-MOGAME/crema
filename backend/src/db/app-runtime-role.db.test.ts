@@ -86,6 +86,90 @@ describe('the app_runtime role', () => {
     });
   });
 
+  /**
+   * The case the six negatives above did not cover, and the one that broke
+   * production.
+   *
+   * A privilege suite naturally asks "was the statement refused?", and row
+   * level security never refuses — it filters. `select count(*) from brews`
+   * succeeds under a policy that matches nothing; it just answers zero. The
+   * assertion above resolves happily either way, so the role shipped, every
+   * read came back empty, and the API served an empty log with HTTP 200 while
+   * nothing anywhere failed.
+   *
+   * So these assert visibility rather than permission: rows must actually come
+   * back, and a write must actually land. `count > 0` is the whole point and
+   * the reason a seeded database is a precondition of this file.
+   */
+  it('can see the rows it is allowed to see, not merely query them', async () => {
+    const [before] = await db.execute<{ n: number }>(
+      sql`select count(*)::int as n from public.brews where user_id is null and deleted_at is null`,
+    );
+    expect(before?.n, 'seed the database before running this suite').toBeGreaterThan(0);
+
+    await asAppRuntime(async () => {
+      const [seen] = await db.execute<{ n: number }>(
+        sql`select count(*)::int as n from public.brews where deleted_at is null`,
+      );
+      // Under 0007 alone this was 0, and nothing said so.
+      expect(seen?.n, 'row level security is hiding the log from the API').toBe(before?.n);
+    });
+  });
+
+  it('can write a brew and read it back', async () => {
+    const id = await asAppRuntime(async () => {
+      const [row] = await db.execute<{ id: string }>(
+        sql`insert into public.brews (beans, method_id, coffee_grams, water_grams, rating, tasting_notes)
+            values (
+              'Policy probe',
+              (select id from public.brew_methods where slug = 'v60'),
+              18, 300, 5,
+              'inserted by the app_runtime policy test'
+            )
+            returning id`,
+      );
+      expect(row?.id, 'the insert policy rejected an unowned row').toBeDefined();
+
+      const [seen] = await db.execute<{ n: number }>(
+        sql`select count(*)::int as n from public.brews where id = ${row?.id}`,
+      );
+      expect(seen?.n, 'the row was written but is invisible to its writer').toBe(1);
+
+      await expect(
+        db.execute(sql`update public.brews set rating = 4 where id = ${row?.id}`),
+      ).resolves.toBeDefined();
+
+      return row?.id;
+    });
+
+    // Cleanup runs as the owner, because the role deliberately cannot delete.
+    await db.execute(sql`delete from public.brews where id = ${id}`);
+  });
+
+  it('can maintain the shared rate limit window the AI routes depend on', async () => {
+    // `rate_limit_windows_no_api_access` is `using (false)`, which was written
+    // when only the owner touched this table. Once the API stopped being the
+    // owner, every /api/ai/* request failed on it.
+    await asAppRuntime(async () => {
+      await expect(
+        db.execute(
+          sql`insert into public.rate_limit_windows as w (key, count, reset_at)
+              values ('policy-probe', 1, now() + interval '1 minute')
+              on conflict (key) do update set count = w.count + 1`,
+        ),
+      ).resolves.toBeDefined();
+
+      const [seen] = await db.execute<{ n: number }>(
+        sql`select count(*)::int as n from public.rate_limit_windows where key = 'policy-probe'`,
+      );
+      expect(seen?.n, 'the AI rate limiter cannot read its own window').toBe(1);
+
+      await expect(
+        db.execute(sql`delete from public.rate_limit_windows where key = 'policy-probe'`),
+      ).resolves.toBeDefined();
+    });
+  });
+
   it('cannot delete a brew, because the application never does', async () => {
     // Deletion here is `set deleted_at`, so the privilege would only ever be
     // used by something that had gone wrong.
