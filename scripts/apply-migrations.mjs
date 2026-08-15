@@ -33,17 +33,35 @@ import postgres from 'postgres';
 const MIGRATIONS_DIR = join(import.meta.dirname, '..', 'supabase', 'migrations');
 const SEED_FILE = join(import.meta.dirname, '..', 'supabase', 'seed.sql');
 
-const connectionString = process.env.DATABASE_URL;
+/**
+ * The owner credential, not the application's.
+ *
+ * `DATABASE_URL` points at `app_runtime` once 0010 is applied, and that role
+ * deliberately cannot create tables — which is correct for a request handler
+ * and useless for a migration. `MIGRATION_DATABASE_URL` carries the owner, and
+ * falls back to `DATABASE_URL` for the environments where they are still the
+ * same string: a local container, and CI.
+ */
+const connectionString = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!connectionString) {
-  console.error('DATABASE_URL is not set.');
+  console.error('Neither MIGRATION_DATABASE_URL nor DATABASE_URL is set.');
   process.exit(1);
 }
+
+/** Matches the application's own posture; see backend/src/db/client.ts. */
+const sslMode = process.env.DATABASE_SSL ?? 'require';
+const ssl =
+  sslMode === 'disable'
+    ? false
+    : sslMode === 'verify'
+      ? { rejectUnauthorized: true, ca: process.env.DATABASE_CA_CERT }
+      : 'require';
 
 const withSeed = process.argv.includes('--seed');
 
 // onnotice is overridden because `create extension if not exists` emits a
 // NOTICE on every re-run, which is noise rather than information here.
-const sql = postgres(connectionString, { max: 1, onnotice: () => undefined });
+const sql = postgres(connectionString, { max: 1, onnotice: () => undefined, ssl });
 
 /**
  * The ledger itself, created before anything consults it.

@@ -96,7 +96,10 @@ Set in the Vercel dashboard only. Nothing sensitive is ever committed.
 | Variable                       | Value                                                     |
 | ------------------------------ | --------------------------------------------------------- |
 | `DATA_SOURCE`                  | `postgres`                                                |
-| `DATABASE_URL`                 | secret, the Supabase pooled connection string             |
+| `DATABASE_URL`                 | secret, the pooled string for the `app_runtime` role      |
+| `MIGRATION_DATABASE_URL`       | secret, the owner string. Read only by `db:apply`         |
+| `DATABASE_SSL`                 | `require`, or `verify` with a certificate below           |
+| `DATABASE_CA_CERT`             | the project CA, PEM. Only needed for `verify`             |
 | `TRUST_PROXY`                  | `true` — Vercel overwrites the forwarding header          |
 | `GEMINI_API_KEY`               | secret, if the AI features are enabled for the deployment |
 | `GEMINI_MODEL`                 | a Gemini Flash model id                                   |
@@ -141,6 +144,120 @@ prerequisite of the first deploy, not a follow-up to it.
 `GEMINI_API_KEY` is read server-side and is never included in a response or in
 the browser bundle. Vite compiles anything prefixed `VITE_` into the client
 bundle, so no secret is ever given that prefix.
+
+## Database security runbooks
+
+Two procedures and one drill, from PLANNING section 14. The first two are done
+once; the third is worth repeating whenever the plan or the schema changes
+enough that the last rehearsal no longer describes the system.
+
+### Encrypting the connection
+
+`postgres.js` sends no TLS request unless it is told to, and the Supabase pooler
+does not insist, so a connection string alone produced a plaintext link across
+the public internet. `DATABASE_SSL` now decides, defaults to `require`, and the
+environment loader refuses `disable` in production.
+
+`require` encrypts and accepts whatever certificate is presented, which stops
+eavesdropping but not impersonation. To close both:
+
+1. Supabase dashboard → Settings → Database → SSL configuration → download the
+   certificate.
+2. Add it to Vercel as `DATABASE_CA_CERT`, the whole PEM block including the
+   `BEGIN`/`END` lines. Newlines survive the dashboard's multiline field.
+3. Set `DATABASE_SSL=verify`.
+4. Redeploy. A wrong or missing certificate fails at boot with a message naming
+   the variable, rather than on the first query.
+
+Do not verify against Node's own trust store: Supabase signs the pooler with a
+private CA, so `rejectUnauthorized` without `DATABASE_CA_CERT` rejects every
+connection rather than securing it. That is why the loader refuses `verify`
+unless the certificate is present.
+
+A note on measuring it, because the obvious instrument lies. `pg_stat_ssl`
+reports the encryption state of the connection _the pooler_ holds to Postgres,
+not the one the client holds to the pooler — through port 6543 it reads `false`
+whatever the client does, which is a false alarm waiting to happen. The proof
+that the client link is encrypted is that it connects at all: `postgres.js`
+fails closed when it asks for TLS and the server refuses.
+
+### Switching to the least-privileged role
+
+Migration `0010_app_runtime_role.sql` creates `app_runtime`: DML on the
+application's tables, no DDL, no ownership, no RLS bypass, and no `DELETE` on
+`brews` because the domain soft-deletes. It is created without a password, so no
+credential is written into the repository.
+
+1. Apply the migration with the owner credential:
+
+   ```bash
+   MIGRATION_DATABASE_URL='postgresql://postgres.<ref>:<owner-password>@...:6543/postgres' \
+     npm run db:apply
+   ```
+
+2. Give the role a generated password:
+
+   ```sql
+   alter role app_runtime with password '<generated>';
+   ```
+
+3. Point the deployment at it. **Through the pooler the username carries the
+   project reference**, exactly as the owner's does — `app_runtime.<ref>`, not
+   `app_runtime`. Getting this wrong produces "Tenant or user not found", which
+   reads like a wrong password:
+
+   ```
+   DATABASE_URL=postgresql://app_runtime.<ref>:<password>@aws-1-<region>.pooler.supabase.com:6543/postgres
+   ```
+
+4. Keep the owner string in Vercel as `MIGRATION_DATABASE_URL`. Nothing in the
+   request path reads it; `db:apply` and `db:reset` do.
+5. Redeploy, then confirm the app still serves: `/api/health` reports
+   `dataSource: postgres`, and the log lists brews.
+
+The privileges are held in place by `app-runtime-role.db.test.ts`, which asserts
+the negatives — the role cannot drop a table, delete a brew, create objects, or
+write the reference vocabularies. A boundary nobody asserts is a boundary that
+grows back the first time someone debugs a permission error with the owner
+credential.
+
+When authentication lands, this is also what makes `0007_rls.sql` load-bearing:
+the policies were always correct and always bypassed, because the owner bypasses
+them and `app_runtime` does not.
+
+### The backup restore drill
+
+An untested backup is a belief. Supabase takes the backups; what has to be
+rehearsed is the restore, because a procedure improvised during an incident is a
+second incident.
+
+1. Dashboard → Database → Backups. Note what the current plan retains and for
+   how long. Free projects keep daily backups only; point-in-time recovery is a
+   paid feature. Write down what you actually have rather than what you assume.
+2. Create a scratch project in the same region and restore the most recent
+   backup into it.
+3. Check the data arrived whole, not merely that the restore reported success:
+
+   ```sql
+   select count(*) from brews where deleted_at is null;
+   select count(*) from brew_flavor_tags;          -- the join survived
+   select max(brewed_at) from brews;               -- the most recent brew is there
+   select count(*) from crema_migrations.applied;  -- the ledger came with it
+   ```
+
+   Compare each against production. The flavour-tag count is the interesting
+   one: it is the only table whose rows exist solely as references to two
+   others.
+
+4. Point a local checkout at the restored database with `DATA_SOURCE=postgres`
+   and load the log. A backup that satisfies four counts and cannot serve a page
+   has not been tested.
+5. Delete the scratch project, and record the date and the row counts in the
+   deployment log below.
+
+Nothing in this repository has to change for a restore: `npm run db:apply`
+rebuilds the schema from the migrations, and the ledger means it applies only
+what a restored database is missing.
 
 ## Preview deployments
 

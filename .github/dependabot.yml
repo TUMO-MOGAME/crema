@@ -1,0 +1,42 @@
+version: 2
+
+# Proposals, not surprises.
+#
+# The pipeline already refuses a high-severity advisory on every push, which
+# catches a vulnerable dependency the day it is disclosed. What it cannot do is
+# keep the tree current enough that the disclosure is a small upgrade rather
+# than a major-version migration under time pressure. That is this file's job.
+#
+# Minor and patch bumps are grouped into one pull request per ecosystem: nine CI
+# stages review them far more thoroughly than a person reading changelogs, and
+# ten separate pull requests for ten patch bumps is a queue nobody triages.
+# Majors arrive alone, because those are the ones worth reading about.
+
+updates:
+  - package-ecosystem: npm
+    # The root of the workspace: one lockfile covers all three packages.
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+    labels: [dependencies]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: 'chore(ci)'
+    labels: [dependencies]
