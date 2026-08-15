@@ -38,6 +38,32 @@ async function asAppRuntime<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Asserts that Postgres refused the statement for want of privilege.
+ *
+ * By SQLSTATE rather than by message, for two reasons. Drizzle wraps the
+ * driver's error in one of its own — the message reads `Failed query: …`, and a
+ * regex against it passes for any failure at all, including a typo in the SQL.
+ * And `42501` covers both wordings this suite provokes: "permission denied for
+ * table" and "must be owner of table" are the same refusal, and matching the
+ * code rather than the prose means a Postgres release rephrasing either one
+ * does not turn a security assertion red.
+ */
+async function expectDeniedByPrivilege(statement: Promise<unknown>): Promise<void> {
+  const error: unknown = await statement.then(
+    () => null,
+    (thrown: unknown) => thrown,
+  );
+
+  expect(error, 'the statement was allowed, which is the failure').not.toBeNull();
+
+  // The driver's error is the cause; Drizzle's wrapper is what was thrown.
+  const cause: unknown = (error as { cause?: unknown }).cause ?? error;
+  const code = (cause as { code?: string }).code;
+
+  expect(code, `expected SQLSTATE 42501, got ${String((cause as Error).message)}`).toBe('42501');
+}
+
 describe('the app_runtime role', () => {
   it('exists, and does not bypass row level security', async () => {
     const [role] = await db.execute<{ rolbypassrls: boolean; rolcreatedb: boolean }>(
@@ -64,32 +90,28 @@ describe('the app_runtime role', () => {
     // Deletion here is `set deleted_at`, so the privilege would only ever be
     // used by something that had gone wrong.
     await asAppRuntime(async () => {
-      await expect(db.execute(sql`delete from public.brews where false`)).rejects.toThrow(
-        /permission denied/i,
-      );
+      await expectDeniedByPrivilege(db.execute(sql`delete from public.brews where false`));
     });
   });
 
   it('cannot drop the tables it reads', async () => {
     await asAppRuntime(async () => {
-      await expect(db.execute(sql`drop table public.brews`)).rejects.toThrow(/must be owner/i);
+      await expectDeniedByPrivilege(db.execute(sql`drop table public.brews`));
     });
   });
 
   it('cannot create objects of its own in the schema', async () => {
     await asAppRuntime(async () => {
-      await expect(db.execute(sql`create table public.smuggled (id int)`)).rejects.toThrow(
-        /permission denied/i,
-      );
+      await expectDeniedByPrivilege(db.execute(sql`create table public.smuggled (id int)`));
     });
   });
 
   it('cannot write the reference vocabularies a migration owns', async () => {
     await asAppRuntime(async () => {
-      await expect(
+      await expectDeniedByPrivilege(
         db.execute(sql`insert into public.brew_methods (slug, label, display_order)
                        values ('smuggled', 'Smuggled', 99)`),
-      ).rejects.toThrow(/permission denied/i);
+      );
     });
   });
 });
