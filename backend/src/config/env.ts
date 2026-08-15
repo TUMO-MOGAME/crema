@@ -30,6 +30,35 @@ const envSchema = z
     DATABASE_URL: z.string().optional(),
 
     /**
+     * Whether the database connection is encrypted, and how far it is trusted.
+     *
+     * `postgres.js` defaults to no TLS and the Supabase pooler does not insist,
+     * so an unset option meant every query and the password itself crossed the
+     * public internet in the clear. It defaults to `require` here for the
+     * reason every security default exists: the safe answer should be the one
+     * you get by saying nothing.
+     *
+     * - `require` encrypts but accepts whatever certificate is presented. It
+     *   stops eavesdropping, not impersonation.
+     * - `verify` additionally checks the certificate against `DATABASE_CA_CERT`,
+     *   which closes both. Supabase signs the pooler with its own CA, so the
+     *   certificate has to be supplied — Node's trust store rejects it.
+     * - `disable` is plaintext, for a local container on a loopback address.
+     *   Refused in production below.
+     */
+    DATABASE_SSL: z.enum(['require', 'verify', 'disable']).default('require'),
+
+    /**
+     * The CA certificate `verify` checks against, PEM encoded. Downloaded from
+     * the Supabase dashboard: Settings → Database → SSL configuration.
+     *
+     * Not a secret — a CA certificate is published so it can be checked against
+     * — but it lives in the environment rather than the repository because it
+     * is per-project and rotates on its own schedule.
+     */
+    DATABASE_CA_CERT: z.string().min(1).optional(),
+
+    /**
      * Requests per minute per caller, across the whole API.
      *
      * Generous on purpose: it exists to stop a runaway client, not to shape
@@ -81,6 +110,40 @@ const envSchema = z
      * and it is gone by the next request. Refusing to boot converts it into the
      * one thing it is not on its own: something you find out about.
      */
+    /**
+     * `verify` without a certificate cannot verify anything, and failing at
+     * boot is better than failing on the first query — or worse, appearing to
+     * verify while checking against a trust store that will never contain
+     * Supabase's own CA.
+     */
+    if (value.DATABASE_SSL === 'verify' && !value.DATABASE_CA_CERT) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['DATABASE_CA_CERT'],
+        message:
+          'DATABASE_CA_CERT is required when DATABASE_SSL is "verify". Download it from the ' +
+          'Supabase dashboard under Settings → Database → SSL configuration.',
+      });
+    }
+
+    /**
+     * The same reasoning as the in-memory store below: a plaintext connection
+     * to a database that is a network hop away is a silent failure — it works,
+     * it is fast, and it publishes every row and the password to anything on
+     * the path. Local development against a container on loopback is the case
+     * `disable` exists for, and production is not it.
+     */
+    if (value.NODE_ENV === 'production' && value.DATABASE_SSL === 'disable') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['DATABASE_SSL'],
+        message:
+          'DATABASE_SSL "disable" cannot be used in production — the connection would carry ' +
+          'every query and the database password in the clear. Use "require", or "verify" with ' +
+          'DATABASE_CA_CERT.',
+      });
+    }
+
     if (value.NODE_ENV === 'production' && value.DATA_SOURCE === 'memory') {
       ctx.addIssue({
         code: 'custom',
