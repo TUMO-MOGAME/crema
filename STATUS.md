@@ -25,6 +25,7 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 6     | AI — Quick Log, Coach agent, guardrails       | **done**    | 100%     |
 | 7     | Ship — Vercel, docs, demo                     | in progress | 98%      |
 | 8     | Hardening — the audit's findings              | in progress | 90%      |
+| 9     | Security — the ten protection steps           | next        | 0%       |
 
 **Overall: planning, phases 0 through 6, and the Phase 8 hardening pass are
 complete; Phase 7 is down to its last artefact.** 597 unit tests, database,
@@ -213,11 +214,20 @@ does not mask anything.
 
 ## Next
 
-One artefact and one operator step, neither of them code. The demo recording
-closes Phase 7 — the README now opens on four screens captured from the live
-deployment, wallpaper and all, with the wireframes they grew from kept beside
-them. Rotating the database credential in the Supabase dashboard closes Phase 8;
-PLANNING section 13 keeps that box open until it is ticked.
+**Phase 9, and it opens with something that was found rather than expected.** A
+pass over the ten standard database and client protections — now PLANNING
+section 14 — measured each against what this repository actually does, and two
+answers came back wrong. The database connection is not encrypted: asked
+directly, `pg_stat_ssl` reports `ssl = false`, so every query and the password
+itself cross the internet in the clear. And the API connects as `postgres`, a
+role that bypasses every RLS policy, creates databases and drops tables — the
+policies in `0007_rls.sql` are inert for the connection that matters. Six of the
+ten were already true, two wait for authentication by scope, and the order of
+work is section 14.5. First two items are a day between them.
+
+The demo recording still closes Phase 7, and rotating the database credential
+still closes Phase 8 — that one now belongs in the same sitting as the
+least-privilege work, since both edit the same connection strings.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -604,3 +614,4 @@ content-identical cherry-picked sync PRs are the honest path from here, and
 | 2026-08-14 | The backdrop, twice. Round one shipped a near-invisible texture pair and taught the real requirement; round two ships it: a steaming cup on a lamplit table behind the dark theme, a latte on sunlit linen behind the light, chosen from four generated candidates reviewed under the exact treatment they would wear. The content column is now a full-height frosted sheet — surface at 85% over a heavy backdrop blur — so the scene lives in the margins and the text's ground is effectively solid. 38 KB for both images; the parity test guards the three new tokens.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 2026-08-14 | Both repositories aligned and the wallpaper deployed. The portfolio's rebase merge of the first sync re-minted fifteen shared commits as eleven new ids, so the mirror now tracks content rather than commit identity — recorded as a decision, and the sync routine is now a cherry-picked branch on the mirror's own history, verified tree-identical before the PR opens. Production tracks the portfolio, so merging the wallpaper sync was also the deploy.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 2026-08-14 | The screens are the app now. Four screenshots captured from the production deployment — the log in both themes, the coach mid-answer with its bold figures and dash list, and the Add form with Quick Log — replace the wireframes in the README, which move to a kept-beside-them link. The live URL in the README becomes the short public one. What remains of Phase 7 is the demo recording alone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 2026-08-15 | The ten protection steps, measured. PLANNING section 14 walks the standard database and client checklist against this repository and reports what is true rather than what was intended: six already hold — parameterised queries, server-side validation, HTTPS with HSTS, error messages that leak nothing — and two wait on authentication by scope. Two came back wrong, both verified by querying the running database rather than by reading code. The connection is unencrypted (`pg_stat_ssl` says `ssl = false`), and the app connects as `postgres`, which bypasses RLS and can drop the tables it reads. Both fixes are written out with the assertions that would keep them fixed, and Phase 9 is on the board.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
