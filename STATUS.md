@@ -23,18 +23,18 @@ Legend: `done` · `in progress` · `next` · `blocked` · `not started`
 | 4     | UI — design system, CRUD screens              | **done**    | 100%     |
 | 5     | Polish — a11y, motion, states                 | **done**    | 100%     |
 | 6     | AI — Quick Log, Coach agent, guardrails       | **done**    | 100%     |
-| 7     | Ship — Vercel, docs, demo                     | in progress | 95%      |
+| 7     | Ship — Vercel, docs, demo                     | in progress | 98%      |
 | 8     | Hardening — the audit's findings              | in progress | 90%      |
 
 **Overall: planning, phases 0 through 6, and the Phase 8 hardening pass are
-complete; Phase 7 is down to its last two artefacts.** 587 unit tests, database,
+complete; Phase 7 is down to its last artefact.** 597 unit tests, database,
 provider and end-to-end suites passing, `main` protected and green. **The app is
 live** — serving from Supabase behind a single public origin with all three AI
 surfaces enabled, verified end to end, and the URL recorded in
 [deployment.md](./deployment.md). All thirty acceptance criteria are ticked
 against evidence; the README and Documentation.md are level with what shipped,
-and what remains is screenshots with the demo recording, plus Phase 8's one
-operator step — rotating the database credential.
+and what remains is the demo recording, plus Phase 8's one operator step —
+rotating the database credential.
 
 ---
 
@@ -49,6 +49,15 @@ variable three days older than the plan revision it contradicted, each recorded
 with what fixed it. The last of those is worth the read — the env loader's
 refusal to run production on the in-memory store fired exactly as designed, at
 the first misconfiguration it was written for.
+
+The day after going live was a polish pass, shipped as five pull requests and
+mirrored to the portfolio: the audit's hardening (Phase 8), the documentation
+brought level with what shipped, the coach's answers rendered as type instead of
+raw asterisks, and — in two iterations — the backdrop. The first iteration was a
+texture tuned to be unnoticed, which succeeded to a fault; the second is what
+ships: a photographed scene worn as wallpaper, visible in the margins, with the
+content column as a full-height sheet of frosted glass so the text never depends
+on what the picture is doing. Production wears it now.
 
 Phases 0, 1 and 2 are complete and verified. The monorepo runs, builds, tests
 and lints clean on a fresh install; every change to the portfolio repository has
@@ -204,12 +213,11 @@ does not mask anything.
 
 ## Next
 
-Two artefacts and one operator step, none of them code. Screenshots and the demo
-recording close Phase 7 — the README and Documentation.md halves of the
-documentation sweep are done, brought level with the three AI surfaces, the live
-Postgres deployment and the hardening pass. Rotating the database credential in
-the Supabase dashboard closes Phase 8; PLANNING section 13 keeps that box open
-until it is ticked.
+One artefact and one operator step, neither of them code. The demo recording
+closes Phase 7 — the README now opens on four screens captured from the live
+deployment, wallpaper and all, with the wireframes they grew from kept beside
+them. Rotating the database credential in the Supabase dashboard closes Phase 8;
+PLANNING section 13 keeps that box open until it is ticked.
 
 Nothing about them writes to the database directly: the agent proposes and the
 human commits, which is why `ai_suggestions` exists as its own table with
@@ -550,6 +558,18 @@ revision and what it removed.
 
 ---
 
+| 2026-08-14 | Coach answers render a small markdown subset, not raw text | The
+model bolds its figures and lists its comparisons; a ~150-line renderer
+producing only React text nodes beats a markdown dependency plus the sanitiser
+it would drag in | | 2026-08-14 | The backdrop is a photographed scene behind
+frosted glass | A texture tuned to be unnoticed was invisible, which missed the
+want behind the ask; a visible picture needs a layer between it and the text, so
+the content column became that layer | | 2026-08-14 | The mirror syncs by pull
+request, not by push | A rebase merge on the portfolio re-minted the shared
+commits, so the two histories now tell one story in different ids;
+content-identical cherry-picked sync PRs are the honest path from here, and
+`git pushall` is retired for `main` |
+
 ## Update log
 
 | Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -580,3 +600,7 @@ revision and what it removed.
 | 2026-08-13 | The plan brought level with what shipped, and the acceptance criteria ticked. PLANNING's API table now carries the flavour tag routes and the coach's mid-stream error semantics; section 6.2 records the switch from generateText to streamText and why; section 6.3 describes extraction as built — asked for after the save, provenance load-bearing — rather than as first imagined. All thirty criteria in section 9 are checked, each against the suite, the live deployment, or the repository that proves it, which closes the Phase 7 checklist item that asked for exactly that. What remains of the project is README, Documentation.md, screenshots and the demo.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 2026-08-14 | Phase 8 opens and closes in one pass: a full audit of the codebase found no criticals and nine findings, now recorded as PLANNING section 13 and fixed in severity order. The AI limiter counts in Postgres so every serverless instance draws one budget (`rate_limit_windows`, migration 0009); an error boundary puts a floor under the tree; the form finally offers the backdating `brewedAt` always promised; every request carries a 15-second timeout; the coach's trace says when it searched a slice of the log; tasting notes get a textarea; the SSE parser reads both framings the format permits; and a test holds the twice-declared light theme to being one theme. The one finding code cannot close — rotating the database credential — is recorded in the plan as the operator step it is.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 2026-08-14 | The documentation brought level with what shipped, which was Phase 7's biggest remaining item. Documentation.md's AI section now describes the three surfaces as built — Quick Log in the form, the coach with its trace, flavour tags on save — instead of promising two of them "still to come"; the Supabase section says production runs Postgres and points at the repository's own migration runner; the env table carries the two variables it was missing; the testing table names the database and provider suites. The README's front-door claim is finally the true one: live, with the URL, one Vercel project not two, and flavour tags in the feature list. Remaining: screenshots, the demo, and the credential rotation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 2026-08-14 | The coach answers in type. A CoachAnswer renderer draws the model's markdown — bold figures, dash and numbered lists, italics, code — as styled elements built purely from React text nodes, with an unclosed bold at the stream's edge rendered as bold-in-progress rather than flashing asterisks. The prompt meets it halfway: lead with the answer, bold only the figures, dash-list any comparison of three or more.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-08-14 | The backdrop, twice. Round one shipped a near-invisible texture pair and taught the real requirement; round two ships it: a steaming cup on a lamplit table behind the dark theme, a latte on sunlit linen behind the light, chosen from four generated candidates reviewed under the exact treatment they would wear. The content column is now a full-height frosted sheet — surface at 85% over a heavy backdrop blur — so the scene lives in the margins and the text's ground is effectively solid. 38 KB for both images; the parity test guards the three new tokens.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 2026-08-14 | Both repositories aligned and the wallpaper deployed. The portfolio's rebase merge of the first sync re-minted fifteen shared commits as eleven new ids, so the mirror now tracks content rather than commit identity — recorded as a decision, and the sync routine is now a cherry-picked branch on the mirror's own history, verified tree-identical before the PR opens. Production tracks the portfolio, so merging the wallpaper sync was also the deploy.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 2026-08-14 | The screens are the app now. Four screenshots captured from the production deployment — the log in both themes, the coach mid-answer with its bold figures and dash list, and the Add form with Quick Log — replace the wireframes in the README, which move to a kept-beside-them link. The live URL in the README becomes the short public one. What remains of Phase 7 is the demo recording alone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
