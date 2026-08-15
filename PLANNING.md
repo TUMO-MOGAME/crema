@@ -697,16 +697,33 @@ order section 14.5 gives.
 | #   | Step                                    | State          | Where it stands                                                                                |
 | --- | --------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------- |
 | 1   | Parameterised queries / ORM             | **Done**       | Drizzle everywhere; the raw `sql` blocks are static text with no interpolated input            |
-| 2   | Least privilege for database accounts   | **Not done**   | The API connects as `postgres`: bypasses RLS, creates databases, drops objects                 |
+| 2   | Least privilege for database accounts   | **Done**       | `app_runtime` holds DML on the app's tables and nothing else; asserted by negative tests       |
 | 3   | Encrypt at rest                         | **Platform**   | Supabase encrypts the volume; nothing in this repository controls or can verify it             |
-| 3b  | Encrypt in transit                      | **Not done**   | Verified: `pg_stat_ssl` reports `ssl = false` on the connection this app opens                 |
-| 4   | Keep software and patches current       | **Partial**    | `npm audit --audit-level=high` gates every push; nothing proposes updates                      |
-| 5   | Regular backups, tested restoration     | **Unverified** | Whatever the Supabase plan provides, untested and undocumented here                            |
+| 3b  | Encrypt in transit                      | **Done**       | `DATABASE_SSL` defaults to `require`; production is refused `disable` at boot                  |
+| 4   | Keep software and patches current       | **Done**       | `npm audit` gates every push, and Dependabot proposes grouped weekly updates                   |
+| 5   | Regular backups, tested restoration     | **Runbook**    | The drill is written into `deployment.md`; running it once is an operator step                 |
 | 6   | Hash passwords with bcrypt or Argon2    | **Not needed** | No accounts, no passwords, no password column. A rule to hold when auth lands                  |
 | 7   | Validate and sanitise input server-side | **Done**       | Shared Zod schemas on every route, `.strict()`, a 16 KB body ceiling, clamped model arguments  |
 | 8   | Secure auth tokens and session controls | **Deferred**   | No sessions in v1 by scope. The shape it takes is written below so it is not improvised later  |
 | 9   | Enforce HTTPS everywhere                | **Done**       | Vercel TLS, HSTS for a year with subdomains, `upgrade-insecure-requests`, `connect-src 'self'` |
 | 10  | Hide internal detail in error messages  | **Done**       | One envelope, generic 500s, stack traces to the log only, malformed ids answered as 404        |
+
+> **Built in Phase 9, 15 August.** Items 1, 3b, 4, 7, 9 and 10 now hold in code;
+> item 2 holds once the operator applies `0010` and swaps the credential, which
+> `deployment.md` walks through. Items 6 and 8 still wait on authentication, by
+> scope.
+>
+> One correction to how this section was first written, kept rather than quietly
+> edited because it is the more useful half of the finding. `pg_stat_ssl` was
+> cited as the evidence that the connection was unencrypted and as the assertion
+> that would keep it encrypted. It is neither. Through the pooler on 6543 that
+> view describes the connection _Supavisor_ holds to Postgres, not the one the
+> client holds to Supavisor — it reads `false` whatever the client does,
+> including with TLS demanded and negotiated. The gap was real and is fixed; the
+> instrument was wrong. What proves the client link now is that it connects at
+> all: `postgres.js` fails closed when it asks for TLS and the server refuses,
+> and a `verify` attempt against Node's trust store failed on certificate
+> validation — which is a handshake, and therefore proof the pooler speaks TLS.
 
 ### 14.1 What is already true, and why it counts
 
